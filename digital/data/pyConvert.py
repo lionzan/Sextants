@@ -20,5 +20,5 @@ output_file.close()
 s = bytes(s, 'utf-8')    # Or other appropriate encoding
 struct.pack("I%ds" % (len(s),), len(s), s)
 
-    
+//    referece
     https://stackoverflow.com/questions/18367007/python-how-to-write-to-a-binary-file
