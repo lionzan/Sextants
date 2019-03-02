@@ -1,24 +1,38 @@
+
+#######################################################
+#
+#  simple txt-bin converter for Stars Data to be loaded
+#  on an EEPROM for the Sextant project
+#
+#  written by @lionzan, 2019-03-02
+#
+#  referece https://stackoverflow.com/questions/18367007/python-how-to-write-to-a-binary-file
+#   
+#######################################################
+
+import struct
+
 output = []
 items = []
+
 fileIn = open('StarsData.csv', 'r')
 for row in fileIn.read().split('\n'):
-    items.append[row.split(',')]
+    items.append(row.split(','))
+
+fileOut = open('StarsData1.bin', 'wb')
 for item in items:
-    output.append(float(item[0])
-    output.append(float(item[1])
-    output.append(float(item[2])
-    output.append(item[3])
-    output.append(item[4])
-    
-    
-from array import array
-output_file = open('StarsData.bin', 'wb')
-float_array = array('d', [3.14, 2.7, 0.0, -1.0, 1.1])
-float_array.tofile(output_file)
-output_file.close()
+    c3=bytes(item[3],'utf-8')
+    c4=bytes(item[4],'utf-8')
+    a=struct.pack('fff6s13s',float(item[0]),float(item[1]),float(item[2]),c3,c4)
+    fileOut.write(a)
+    print(a)
+    print('\n')
 
-s = bytes(s, 'utf-8')    # Or other appropriate encoding
-struct.pack("I%ds" % (len(s),), len(s), s)
+fileIn.close()
+fileOut.close()
+    
+    output.append(a)
 
-//    referece
-    https://stackoverflow.com/questions/18367007/python-how-to-write-to-a-binary-file
+for out in output:
+    fileOut.write(out)
+fileOut.close()
