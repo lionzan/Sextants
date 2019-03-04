@@ -1,12 +1,26 @@
+/*
+
+*/
+
+
 // constants for planets positions
-const TIME_J2000 = 946728000.0; // (seconds) J2000 == 1/1/2000 at 12:00 in the C++ reference, T0 == 1/1/1970 double check value!!!
-const JD_J2000 = 2450680.5; // (days) J2000 == 1/1/2000 at 12:00 in the Julian Calendar
-const JULIAN_CENTURY = 36525.0; // (days)
-const JULIAN_DAY = 86400.0; // (seconds)
-const JULIAN_CENTURY_SECONDS = JULIAN_DAY * JULIAN_CENTURY; 
-const OBLIQUITY_J2000 = 23.43928 * DEG2RAD; // (rad) at J2000, virtually constant (oscillates 2.1 deg with 41,000 yrs cycle)
+const float TIME_J2000 = 946728000.0; // (seconds) J2000 == 1/1/2000 at 12:00 in the C++ reference, T0 == 1/1/1970 double check value!!!
+const float JD_J2000 = 2450680.5;     // (days) J2000 == 1/1/2000 at 12:00 in the Julian Calendar
+const float JULIAN_CENTURY = 36525.0; // (days)
+const float JULIAN_DAY = 86400.0;     // (seconds)
+const float JULIAN_CENTURY_SECONDS = JULIAN_DAY * JULIAN_CENTURY; 
+const float OBLIQUITY_J2000 = 23.43928 * DEG_TO_RAD; // (rad) at J2000, virtually constant (oscillates 2.1 deg with 41,000 yrs cycle)
+
+
+void setup() {
+    
+}
+
+void loop() {
+    
+}
   
-void getPlanetElelments (byte planet, *float elements[12]) {
+void getPlanetElements (byte planet, float elem[12]) {
 /******************************
 *
 * TO BE COMPLETED!!!
@@ -35,14 +49,13 @@ void getPlanetElelments (byte planet, *float elements[12]) {
   
 }
 
-void planetHeliocentricPosition (byte planet, float time, *float cHelioEquatCart[3]) {
+void planetHeliocentricPosition (byte planet, float time, float cHelioEquatCart[3]) {
 /******************************
 *
 * Computing Planet's position in the Heliocentric Equatorial Cartesian System
 *
 * For slow planets it can be done only once at setup or every day or so
 * For fast moving planets it should be done at the time of observation
-
 * byte planet is the Planet's index (skipping 0 for clarity)
 * 1 Mercury
 * 2 Venus
@@ -52,17 +65,17 @@ void planetHeliocentricPosition (byte planet, float time, *float cHelioEquatCart
 ******************************/
 
 // retrieve elements
-float elements[12];
-getPlanetElements (planet, elements);
+float elem[12];
+getPlanetElements (planet, elem);
 
 // compute elements at time and convert angles from DEG to RAD
 float dT = ( time - TIME_J2000 ) / JULIAN_CENTURY_SECONDS; //time from J2000 expressed in centuries for elements calculation
 float eSeMaAxis = elem[0] + dT * elem[6];
 float eEccentr  = elem[1] + dT * elem[7];
-float	eInclin   = ( elem[2] + dT * elem[8] ) * DEG2RAD;
-float eMeanLon  = ( elem[3] + dT * elem[9] ) * DEG2RAD;
-float eLonPeri  = ( elem[4] + dT * elem[10] ) * DEG2RAD;
-float eLonNode  = ( elem[5] + dT * elem[11] ) * DEG2RAD;
+float	eInclin   = ( elem[2] + dT * elem[8] ) * DEG_TO_RAD;
+float eMeanLon  = ( elem[3] + dT * elem[9] ) * DEG_TO_RAD;
+float eLonPeri  = ( elem[4] + dT * elem[10] ) * DEG_TO_RAD;
+float eLonNode  = ( elem[5] + dT * elem[11] ) * DEG_TO_RAD;
 
 // compute Perihelion
 float pPeri = eLonPeri - eLonNode;
@@ -80,13 +93,13 @@ float i = 0;
 while ( (abs(dEA) >= tolEA) && ( i < maxIter ) ) {
   dMA = pMeanAnom - ( pEccAnom - eEccentr * sin(pEccAnom) );
   dEA = dMA / ( 1 - eEccentr * cos(pEccAnom) );
-  eccAnom += dEA;
+  pEccAnom += dEA;
   i++;
 }
 
 // compute planet position on its heliocentric orbit
 float xPlanet = eSeMaAxis * ( cos(pEccAnom) - eEccentr );
-float yPlanet = eSeMaAxis * sin(pEccAnom) * sqrt( 1 - eEccentr * e Eccentr );
+float yPlanet = eSeMaAxis * sin(pEccAnom) * sqrt( 1 - eEccentr * eEccentr );
 float zPlanet = 0;
 
 // transform position to J2000 ecliptic plane
@@ -110,7 +123,7 @@ cHelioEquatCart [1] = yEquat;
 cHelioEquatCart [2] = zEquat;
 }
 
-void planetGeocentricPosition ( byte planet, float time, * float cGeoEquatCart) {
+void planetGeocentricPosition ( byte planet, float time, float cGeoEquatCart[3]) {
 /*****************************
 *
 * TO BE COMPLETED!!!
@@ -121,9 +134,9 @@ void planetGeocentricPosition ( byte planet, float time, * float cGeoEquatCart) 
   float eHEC[3]; // Earth's Heliocentric Equatorial Cartesian coordiantes
   
   // compute planet position
-  planetHeliocentricPosition (elem[12], time, pHEC);
+  planetHeliocentricPosition (planet, time, pHEC);
   
-  // compute Earth position ( NOTE!!! approximate since not considering Earth vs. Earth + Moon 
-  planetHeliocentricPosition (elem[12], time, eHEC);
+  // compute Earth position. Approximate since not considering Earth vs. Earth + Moon but apparently good enough
+  planetHeliocentricPosition (3, time, eHEC);
   
 }
