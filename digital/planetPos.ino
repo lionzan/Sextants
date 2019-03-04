@@ -54,13 +54,7 @@ void planetHeliocentricPosition (byte planet, float time, float cHelioEquatCart[
 *
 * Computing Planet's position in the Heliocentric Equatorial Cartesian System
 *
-* For slow planets it can be done only once at setup or every day or so
-* For fast moving planets it should be done at the time of observation
-* byte planet is the Planet's index (skipping 0 for clarity)
-* 1 Mercury
-* 2 Venus
-* 3 Earth+Moon
-* etc...
+* See notes in planetGeocentricPosition function
 *
 ******************************/
 
@@ -121,22 +115,72 @@ float zEquat = sin(OBLIQUITY_J2000) * yEcliptic + cos(OBLIQUITY_J2000) * zEclipt
 cHelioEquatCart [0] = xEquat;
 cHelioEquatCart [1] = yEquat;
 cHelioEquatCart [2] = zEquat;
+  
 }
 
 void planetGeocentricPosition ( byte planet, float time, float cGeoEquatCart[3]) {
 /*****************************
 *
-* TO BE COMPLETED!!!
+* For slow planets it can be done just once at setup or every day or so
+* For fast moving planets it should be done at the time of observation
+* byte planet is the Planet's index (index 0 is used for the Sun position)
+* 0 Sun
+* 1 Mercury
+* 2 Venus
+* 3 Earth+Moon
+* etc...
 *
 *******************************/
   
-  float pHEC[3]; // Planet's Heliocentric Equatorial Cartesian coordiantes
-  float eHEC[3]; // Earth's Heliocentric Equatorial Cartesian coordiantes
+  float pHEC[3] = {0.0, 0.0, 0.0}; // Planet's Heliocentric Equatorial Cartesian coordiantes (default to the Sun)
+  float eHEC[3];                   // Earth's Heliocentric Equatorial Cartesian coordiantes
   
-  // compute planet position
-  planetHeliocentricPosition (planet, time, pHEC);
+  if (planet!=0) {
+    // compute planet position, otherwise it is already set to be the Sun by default
+    planetHeliocentricPosition (planet, time, pHEC);
+  }
   
-  // compute Earth position. Approximate since not considering Earth vs. Earth + Moon but apparently good enough
+  // compute Earth position. Approximate since not considering Earth vs. Earth + Moon
+  // but apparently good enough, with minimal parallax even with close planets [VERIFY!]
   planetHeliocentricPosition (3, time, eHEC);
   
+  // compute and return Geocentric coordinates
+  cGeoEquatCart[0] = pHEC[0] - eHEC[0];
+  cGeoEquatCart[1] = pHEC[1] - eHEC[1];
+  cGeoEquatCart[2] = pHEC[2] - eHEC[2];
+  
 }
+
+void planetGeocentricSpherical ( byte planet, float time, float cGeoEquatSpherical[2] float* pDistance) {
+/*****************************
+*
+* return planet position at time in Geocentric Equatorial Spherical coordinates (Lon, Lat, distance)
+*
+*******************************/
+
+  float pGES[2];                   // Planet's's Geocentric Equatorial Spherical coordiantes
+
+  // compute planet position in Geocentric Equatorial Spherical coordinates
+  planetGeocentricPosition (planet, time, pGES);
+  
+  // compute and return planet position [UPDATE THE FORMULAS WITH THE CORRECT TRANSFORMATION OF pGES!!!!]
+  cGeoEquatSpherical[0] = 0.0;
+  cGeoEquatSpherical[1] = 0.0;
+  pDistance = 0.0;
+
+}
+
+void starGeocentricSpherical (byte star, float cGeoEquatSpherical[2]) {
+/*****************************
+*
+* Retrieving Star's position from EEPROM
+*
+*******************************/
+
+  // retrieve and return values
+  cGeoEquatSpherical[0] = 0.0;
+  cGeoEquatSpherical[1] = 0.0;
+  pDistance = 0.0;
+  
+}
+
