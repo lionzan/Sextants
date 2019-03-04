@@ -2,6 +2,7 @@
 
 */
 
+#include <Wire.h>
 
 // constants for planets positions
 const float TIME_J2000 = 946728000.0; // (seconds) J2000 == 1/1/2000 at 12:00 in the C++ reference, T0 == 1/1/1970 double check value!!!
@@ -11,6 +12,19 @@ const float JULIAN_DAY = 86400.0;     // (seconds)
 const float JULIAN_CENTURY_SECONDS = JULIAN_DAY * JULIAN_CENTURY; 
 const float OBLIQUITY_J2000 = 23.43928 * DEG_TO_RAD; // (rad) at J2000, virtually constant (oscillates 2.1 deg with 41,000 yrs cycle)
 
+const unsigned int EEPROM_ADDR         = 0X0050; // hard set through pins 1-3 between 0x50-0x58
+const unsigned int EEPROM_SIZE         = 0X8000; // 32 kbytes = 256 kbits
+const unsigned int PLANETS_DATA_ADDR   = 0X0000; // 9 planets at 12 float each = 12*4 = 48 = 0X30 bytes each == 0x360 bytes total
+const unsigned int PLANET_DATA_SIZE    = 0x60;
+const unsigned int PLANET_E0_DATA_SIZE = 0x18;   // 6 float elements (+ 2 spare at the end)
+const unsigned int PLANET_ED_DATA_SIZE = 0x18;   // 6 float elements (+ 2 spare at the end)
+const unsigned int PLANET_INFO_SIZE    = 0x20;   // 32 bytes available for additional info on plane
+const unsigned int SUN_MOON_DATA_ADDR  = 0X0360; // Free space for Sun and Moon or other uses = 0xA0 total
+const unsigned int STARS_DATA_ADDR     = 0X0400; // up to 96 stars at 32 bytes each 
+const unsigned int STAR_DATA_SIZE      = 0x20;
+const unsigned int MAG_DECL_ADDR       = 0X1000; // grid 4 deg X 4 deg for Lon[180W,180E], Lat[72N,64S], 35*90=3,150 at 8 byte per point = 0x6270
+const unsigned int MAG_DECL_DATA_SIZE  = 0x08;
+const unsigned int FREE_SPACE_ADDR     = 0X7270; // 0x0D90 = 3472 bytes available
 
 void setup() {
     
@@ -19,40 +33,60 @@ void setup() {
 void loop() {
     
 }
+
+void i2c_eeprom_read_buffer( int deviceaddress, unsigned int eeaddress, byte *buffer, int length ) {
+// read max 31 bytes
+    Wire.beginTransmission(deviceaddress);
+    Wire.write((int)(eeaddress >> 8)); // MSB
+    Wire.write((int)(eeaddress & 0xFF)); // LSB
+    Wire.endTransmission();
+    Wire.requestFrom(deviceaddress,length);
+    int c = 0;
+    for ( c = 0; c < length; c++ )
+        if (Wire.available()) buffer[c] = Wire.read();
+}
+
   
 void getPlanetElements (byte planet, float elem[12]) {
 /******************************
 *
+* Return Planet Elements from EEPROM
+*
 * TO BE COMPLETED!!!
 *
-* Retrieving Planet's elements from EEPROM
-*
-* elements (from NASA tables https://ssd.jpl.nasa.gov/txt/aprx_pos_planets.pdf)
-* e0SeMaAxis = Semi Mayor Axis (au)
-* e0Ecc     = Eccentricity (1)
-*	e0Incl    = Inclination (deg)
-* e0MeanLon = Mean Longitude (deg)
-* e0LonPeri = Longitude of Perihelion (deg)
-* edLonNode = Longitude of Ascending Node (deg)
+* Elements table (from NASA tables https://ssd.jpl.nasa.gov/txt/aprx_pos_planets.pdf)
+* e0... (elements at T0 = J2000)
+* SeMaAxis = Semi Mayor Axis (au)
+* Eccentr  = Eccentricity (1)
+* Inclin   = Inclination (deg)
+* MeanLon = Mean Longitude (deg)
+* LonPeri = Longitude of Perihelion (deg)
+* LonNode = Longitude of Ascending Node (deg)
 *
 * rates of change per Century
-* edSeMaAxis
-* edEcc
-*	edIncl
-* edMeanLon
-* edLonPeri
-* edLonNode
+* ed... (elements d/dt)
+* SeMaAxis
+* Eccentr
+* Inclin
+* MeanLon
+* LonPeri
+* LonNode
 *
 ******************************/
   
-// access EEPROM tables via I2C
+// access EEPROM tables via I2C and return values
+int pAddr = PLANETS_BASE_ADDR + PLANET_DATA_SIZE * ( planet - 1 )
+byte *e0 = (byte)elem;               // start from the beginning
+byte *ed = e0 + PLANET_E0_DATA_SIZE; // start after end of e0 elements
+i2c_eeprom_read_buffer( EEPROM_ADDR, pAddr, (byte *)e0, PLANET_E0_DATA_SIZE )
+i2c_eeprom_read_buffer( EEPROM_ADDR, pAddr, (byte *)ed, PLANET_ED_DATA_SIZE )
   
 }
 
 void planetHeliocentricPosition (byte planet, float time, float cHelioEquatCart[3]) {
 /******************************
 *
-* Computing Planet's position in the Heliocentric Equatorial Cartesian System
+* return Planet position in Heliocentric Equatorial Cartesian coordinates
 *
 * See notes in planetGeocentricPosition function
 *
@@ -66,7 +100,7 @@ getPlanetElements (planet, elem);
 float dT = ( time - TIME_J2000 ) / JULIAN_CENTURY_SECONDS; //time from J2000 expressed in centuries for elements calculation
 float eSeMaAxis = elem[0] + dT * elem[6];
 float eEccentr  = elem[1] + dT * elem[7];
-float	eInclin   = ( elem[2] + dT * elem[8] ) * DEG_TO_RAD;
+float eInclin   = ( elem[2] + dT * elem[8] ) * DEG_TO_RAD;
 float eMeanLon  = ( elem[3] + dT * elem[9] ) * DEG_TO_RAD;
 float eLonPeri  = ( elem[4] + dT * elem[10] ) * DEG_TO_RAD;
 float eLonNode  = ( elem[5] + dT * elem[11] ) * DEG_TO_RAD;
@@ -121,6 +155,8 @@ cHelioEquatCart [2] = zEquat;
 void planetGeocentricPosition ( byte planet, float time, float cGeoEquatCart[3]) {
 /*****************************
 *
+* return Planet position at time in Geocentric Equatorial Cartesian coordinates
+*
 * For slow planets it can be done just once at setup or every day or so
 * For fast moving planets it should be done at the time of observation
 * byte planet is the Planet's index (index 0 is used for the Sun position)
@@ -151,10 +187,12 @@ void planetGeocentricPosition ( byte planet, float time, float cGeoEquatCart[3])
   
 }
 
-void planetGeocentricSpherical ( byte planet, float time, float cGeoEquatSpherical[2] float* pDistance) {
+void planetGeocentricSpherical ( byte planet, float time, float cGeoEquatSpherical[2] float *pDistance) {
 /*****************************
 *
 * return planet position at time in Geocentric Equatorial Spherical coordinates (Lon, Lat, distance)
+*
+* TO BE COMPLETED!!!
 *
 *******************************/
 
@@ -166,7 +204,7 @@ void planetGeocentricSpherical ( byte planet, float time, float cGeoEquatSpheric
   // compute and return planet position [UPDATE THE FORMULAS WITH THE CORRECT TRANSFORMATION OF pGES!!!!]
   cGeoEquatSpherical[0] = 0.0;
   cGeoEquatSpherical[1] = 0.0;
-  pDistance = 0.0;
+  *pDistance = 0.0;
 
 }
 
@@ -175,12 +213,13 @@ void starGeocentricSpherical (byte star, float cGeoEquatSpherical[2]) {
 *
 * Retrieving Star's position from EEPROM
 *
+* TO BE COMPLETED!!!
+*
 *******************************/
 
   // retrieve and return values
   cGeoEquatSpherical[0] = 0.0;
   cGeoEquatSpherical[1] = 0.0;
-  pDistance = 0.0;
   
 }
 
