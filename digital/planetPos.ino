@@ -1,6 +1,8 @@
-/*
-
-*/
+/***************************
+*
+* Verified on create.arduino on 2019-03-04
+*
+****************************/
 
 #include <Wire.h>
 
@@ -12,18 +14,19 @@ const float JULIAN_DAY = 86400.0;     // (seconds)
 const float JULIAN_CENTURY_SECONDS = JULIAN_DAY * JULIAN_CENTURY; 
 const float OBLIQUITY_J2000 = 23.43928 * DEG_TO_RAD; // (rad) at J2000, virtually constant (oscillates 2.1 deg with 41,000 yrs cycle)
 
+// constants for EEPROM access
 const unsigned int EEPROM_ADDR         = 0X0050; // hard set through pins 1-3 between 0x50-0x58
 const unsigned int EEPROM_SIZE         = 0X8000; // 32 kbytes = 256 kbits
-const unsigned int PLANETS_DATA_ADDR   = 0X0000; // 9 planets at 12 float each = 12*4 = 48 = 0X30 bytes each == 0x360 bytes total
+const unsigned int PLANETS_BASE_ADDR   = 0X0000; // 9 planets at 12 float each = 12*4 = 48 = 0X30 bytes each == 0x360 bytes total
 const unsigned int PLANET_DATA_SIZE    = 0x60;
 const unsigned int PLANET_E0_DATA_SIZE = 0x18;   // 6 float elements (+ 2 spare at the end)
 const unsigned int PLANET_ED_DATA_SIZE = 0x18;   // 6 float elements (+ 2 spare at the end)
 const unsigned int PLANET_INFO_SIZE    = 0x20;   // 32 bytes available for additional info on plane
-const unsigned int SUN_MOON_DATA_ADDR  = 0X0360; // Free space for Sun and Moon or other uses = 0xA0 total
+const unsigned int SUN_MOON_BASE_ADDR  = 0X0360; // Free space for Sun and Moon or other uses = 0xA0 total
 const unsigned int STARS_DATA_ADDR     = 0X0400; // up to 96 stars at 32 bytes each 
 const unsigned int STAR_DATA_SIZE      = 0x20;
 const unsigned int MAG_DECL_ADDR       = 0X1000; // grid 4 deg X 4 deg for Lon[180W,180E], Lat[72N,64S], 35*90=3,150 at 8 byte per point = 0x6270
-const unsigned int MAG_DECL_DATA_SIZE  = 0x08;
+const unsigned int MAG_DECL_BASE_SIZE  = 0x08;
 const unsigned int FREE_SPACE_ADDR     = 0X7270; // 0x0D90 = 3472 bytes available
 
 void setup() {
@@ -52,7 +55,7 @@ void getPlanetElements (byte planet, float elem[12]) {
 *
 * Return Planet Elements from EEPROM
 *
-* TO BE COMPLETED!!!
+* TO BE TESTED!!!
 *
 * Elements table (from NASA tables https://ssd.jpl.nasa.gov/txt/aprx_pos_planets.pdf)
 * e0... (elements at T0 = J2000)
@@ -75,11 +78,11 @@ void getPlanetElements (byte planet, float elem[12]) {
 ******************************/
   
 // access EEPROM tables via I2C and return values
-int pAddr = PLANETS_BASE_ADDR + PLANET_DATA_SIZE * ( planet - 1 )
+int pAddr = PLANETS_BASE_ADDR + PLANET_DATA_SIZE * ( planet - 1 );
 byte *e0 = (byte)elem;               // start from the beginning
 byte *ed = e0 + PLANET_E0_DATA_SIZE; // start after end of e0 elements
-i2c_eeprom_read_buffer( EEPROM_ADDR, pAddr, (byte *)e0, PLANET_E0_DATA_SIZE )
-i2c_eeprom_read_buffer( EEPROM_ADDR, pAddr, (byte *)ed, PLANET_ED_DATA_SIZE )
+i2c_eeprom_read_buffer( EEPROM_ADDR, pAddr, (byte *)e0, PLANET_E0_DATA_SIZE );
+i2c_eeprom_read_buffer( EEPROM_ADDR, pAddr, (byte *)ed, PLANET_ED_DATA_SIZE );
   
 }
 
@@ -89,6 +92,8 @@ void planetHeliocentricPosition (byte planet, float time, float cHelioEquatCart[
 * return Planet position in Heliocentric Equatorial Cartesian coordinates
 *
 * See notes in planetGeocentricPosition function
+*
+* Algorithm from from NASA https://ssd.jpl.nasa.gov/txt/aprx_pos_planets.pdf
 *
 ******************************/
 
@@ -187,7 +192,7 @@ void planetGeocentricPosition ( byte planet, float time, float cGeoEquatCart[3])
   
 }
 
-void planetGeocentricSpherical ( byte planet, float time, float cGeoEquatSpherical[2] float *pDistance) {
+void planetGeocentricSpherical ( byte planet, float time, float cGeoEquatSpherical[2], float *pDistance) {
 /*****************************
 *
 * return planet position at time in Geocentric Equatorial Spherical coordinates (Lon, Lat, distance)
@@ -223,3 +228,14 @@ void starGeocentricSpherical (byte star, float cGeoEquatSpherical[2]) {
   
 }
 
+void cGEStoLocal ( float time, float cGeoEquatSpherical[2], float cLocal[2] ) {
+/*****************************
+*
+* Convert Star or Planet position from Geocentric Equatorial Spherical to Local at time 
+*
+* TO BE COMPLETED!!!
+*
+*******************************/
+
+    
+}
