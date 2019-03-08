@@ -170,11 +170,10 @@ void planetGeocentricPosition ( byte planet, float time, float cGeoEquatCart[3])
 *
 * For slow planets it can be done just once at setup or every day or so
 * For fast moving planets it should be done at the time of observation
-* byte planet is the Planet's index (index 0 is used for the Sun position)
-* 0 Sun
-* 1 Mercury
-* 2 Venus
-* 3 Earth+Moon
+* byte planet is the Planet's index
+* 0 Mercury
+* 1 Venus
+* 2 Earth+Moon <=> Sun
 * etc...
 *
 *******************************/
@@ -182,10 +181,8 @@ void planetGeocentricPosition ( byte planet, float time, float cGeoEquatCart[3])
   float pHEC[3] = {0.0, 0.0, 0.0}; // Planet's Heliocentric Equatorial Cartesian coordiantes (default to the Sun)
   float eHEC[3];                   // Earth's Heliocentric Equatorial Cartesian coordiantes
   
-  if (planet!=0) {
-    // compute planet position, otherwise it is already set to be the Sun by default
-    planetHeliocentricPosition (planet, time, pHEC);
-  }
+  // compute planet position, otherwise it is already set to be the Sun by default
+  planetHeliocentricPosition (planet, time, pHEC);
   
   // compute Earth position. Approximate since not considering Earth vs. Earth + Moon
   // but apparently good enough, with minimal parallax even with close planets [VERIFY!]
