@@ -23,12 +23,12 @@ const float STELLAR_DAY_DEC = 0.098903691; // (seconds) for stars position (deci
 // constants for EEPROM access
 const unsigned int EEPROM_ADDR         = 0X0050; // hard set through pins 1-3 between 0x50-0x58
 const unsigned int EEPROM_SIZE         = 0X8000; // 32 kbytes = 256 kbits
-const unsigned int PLANETS_BASE_ADDR   = 0X0000; // 9 planets at 12 float each = 12*4 = 48 = 0X30 bytes each == 0x360 bytes total
+const unsigned int PLANETS_BASE_ADDR   = 0X0000; // 8 planets at 12 float each = 12*4 = 48 = 0X30 bytes each == 0x360 bytes total
 const unsigned int PLANET_DATA_SIZE    = 0x60;
 const unsigned int PLANET_E0_DATA_SIZE = 0x20;   // 6 float elements (+ 2 spare at the end)
 const unsigned int PLANET_ED_DATA_SIZE = 0x20;   // 6 float elements (+ 2 spare at the end)
 const unsigned int PLANET_INFO_SIZE    = 0x20;   // 32 bytes available for additional info on plane
-const unsigned int SUN_MOON_BASE_ADDR  = 0X0360; // Free space for Sun and Moon or other uses = 0xA0 total
+const unsigned int SUN_MOON_BASE_ADDR  = 0X0300; // Free space for Moon or other uses = 0x0100 total
 const unsigned int STARS_DATA_ADDR     = 0X0400; // up to 96 stars at 32 bytes each 
 const unsigned int STAR_DATA_SIZE      = 0x20;
 const unsigned int MAG_DECL_ADDR       = 0X1000; // grid 4 deg X 4 deg for Lon[180W,180E], Lat[72N,64S], 35*90=3,150 at 8 byte per point = 0x6270
