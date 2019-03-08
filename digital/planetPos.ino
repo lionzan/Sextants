@@ -6,13 +6,14 @@
 
 #include <Wire.h>
 
-// constants for planets positions
+// constants for stars and planets positions
 const float TIME_J2000 = 946728000.0; // (seconds) J2000 == 1/1/2000 at 12:00 in the C++ reference, T0 == 1/1/1970 double check value!!!
-const float JD_J2000 = 2450680.5;     // (days) J2000 == 1/1/2000 at 12:00 in the Julian Calendar
+const float JD_J2000 = 2451545.0;     // (days) J2000 == 1/1/2000 at 12:00 in the Julian Calendar 2451545.0
 const float JULIAN_CENTURY = 36525.0; // (days)
 const float JULIAN_DAY = 86400.0;     // (seconds)
 const float JULIAN_CENTURY_SECONDS = JULIAN_DAY * JULIAN_CENTURY; 
 const float OBLIQUITY_J2000 = 23.43928 * DEG_TO_RAD; // (rad) at J2000, virtually constant (oscillates 2.1 deg with 41,000 yrs cycle)
+const float STELLAR_DAY = 86164.098903691; // (seconds) for stars position (but arduino float is 4 bytes, abt 7 digits precision HOW TO DEAL WITH THIS??
 
 // constants for EEPROM access
 const unsigned int EEPROM_ADDR         = 0X0050; // hard set through pins 1-3 between 0x50-0x58
