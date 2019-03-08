@@ -2,6 +2,9 @@
 *
 * Verified on create.arduino on 2019-03-04
 *
+* Issues: STELLAR_DAY has too many digits. Verify the precision with 7 digits for 100 yrs after J2000. 0.4 sec/year, too much!
+* Solution: move the star twice, by STELLAR_DAY_SEC and again by STELLAR_DAY_DEC
+*
 ****************************/
 
 #include <Wire.h>
@@ -13,7 +16,9 @@ const float JULIAN_CENTURY = 36525.0; // (days)
 const float JULIAN_DAY = 86400.0;     // (seconds)
 const float JULIAN_CENTURY_SECONDS = JULIAN_DAY * JULIAN_CENTURY; 
 const float OBLIQUITY_J2000 = 23.43928 * DEG_TO_RAD; // (rad) at J2000, virtually constant (oscillates 2.1 deg with 41,000 yrs cycle)
-const float STELLAR_DAY = 86164.098903691; // (seconds) for stars position (but arduino float is 4 bytes, abt 7 digits precision HOW TO DEAL WITH THIS??
+//const float STELLAR_DAY = 86164.098903691; // (seconds) for stars position (but arduino float is 4 bytes, abt 7 digits precision
+const float STELLAR_DAY_SEC = 86164.0; // (seconds) for stars position (integer part)
+const float STELLAR_DAY_DEC = 0.098903691; // (seconds) for stars position (decimal part)
 
 // constants for EEPROM access
 const unsigned int EEPROM_ADDR         = 0X0050; // hard set through pins 1-3 between 0x50-0x58
