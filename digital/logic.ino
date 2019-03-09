@@ -1,6 +1,21 @@
+/**********************************************
+ *
+ * Control module of Sextant
+ * 
+ * 9 March 2019
+ * 
+ * @lionzan
+ * 
+ **********************************************/
+
 //determine how big the array up above is, by checking the size
-#define NUMBUTTONS 4 //S, L, H, L+H
+#define NUMBUTTONS 4 // 3 physical buttons + 1 virtual from the combination of 2
 #define DEBOUNCE 5  // how many ms to debounce, 5+ ms is usually plenty
+#define BUZZFREQ 1000
+#define BUZZLEN 50
+
+const byte buzzer = 9; //buzzer to arduino pin 9
+
  
 //define the buttons
 byte buttons[] = {4, 5, 6}; // physical buttons CONFIRM, UP, DOWN
@@ -28,64 +43,197 @@ void setup() {
   for (i=0; i< NUMBUTTONS; i++) {
     pinMode(buttons[i], INPUT);
     digitalWrite(buttons[i], HIGH);
+    pinMode(buzzer, OUTPUT); // Set buzzer - pin 9 as an output
+
   }
 }
 
 void loop() {
-  byte event1 = checkEvent1();
-  if (event1 != 255) {
-    Serial.print(event1, HEX);
+  byte event = checkEvent();
+  if (event != 255) {
+    Serial.print(event, HEX);
     Serial.print(" ");
     Serial.print(modeNames[mode-1]);
     Serial.print(" ");
     switch (mode) {
       case 1: {  // STARFINDER
-        switch (event1) {
-          case 0x12 : { // 00 Confirm short release 
+        switch (event) {
+          case 0x12 : { //  Confirm short release 
+            // switch to Reading mode
             mode = 2;
+            buzz(1000,20);
             break;
           }
-          case 0x14 : { // 02 Confirm long release 
+          case 0x14 : { //  Confirm long release 
+            //calculate position from readings
+            
+            //switch to Results mode
             mode = 3;
+            buzz(1000,20);
             break;
           }
-          case 0x44 : { // 00 Joint long release 
+          case 0x44 : { //  Joint long release 
+            // switch to Setup mode
             mode = 4;
+            buzz(500,200);
+            break;
+          }
+          case 0x22 : { //  Down short release 
+            // scroll across stars - previous star
+            break;
+          }
+          case 0x24 : { //  Down long release 
+            // scroll across star groups - previous group
+            break;
+          }
+          case 0x32 : { //  Up short release 
+            // scroll across stars - next star
+            break;
+          }
+          case 0x34 : { //  Up long release 
+            // scroll across star groups - next group
             break;
           }
         }
         break;
       }
       case 2: {  // TAKE SIGHT OR MEASURE
-        switch (event1) {
+        switch (event) {
           case 0x12 : { // 00 Confirm short release 
+            // take reading
+          
+            // switch to Starfinder mode
             mode = 1;
+            buzz(1000,20);
             break;
           }
           case 0x44 : { // 00 Joint long release 
+            // exit without changes, switch to Starfinder mode
             mode = 1;
+            buzz(1000,20);
+            break;
+          }
+          case 0x22 : { //  Down short release 
+            // reduce value stepwise (once per event)
+            break;
+          }
+          case 0x23 : { //  Down long start 
+            // reduce value fast (until release)
+            break;
+          }
+          case 0x24 : { //  Down long release 
+            // stop value change
+            break;
+          }
+          case 0x32 : { //  Up short release 
+            // increase value stepwise (once per event)
+            break;
+          }
+          case 0x33 : { //  Up long start 
+            // increase value fast (until release)
+            break;
+          }
+          case 0x34 : { //  Up long release 
+            // stop value change
+            break;
+          }
+          case 0x42 : { //  Up+Down short release 
+            // swap control of elevation/azimuth
             break;
           }
         }
         break;
       }
       case 3: {  // POSITION FIXING
-        switch (event1) {
+        switch (event) {
           case 0x12 : { // Confirm short release 
+            // keep readings and switch to Starfinder mode (for more readings)
             mode = 1;
+            buzz(1000,20);
             break;
           }
-          case 0x44 : { // 00 Joint long release 
+          case 0x14 : { // Confirm long release 
+            // store readings
+            // reset readings
+            // set estimated position to current
+            // compute and set avg. heading and speed since last reading
+            // switch to Starfinder
+            mode = 1;
+            buzz(1000,20);
+            break;
+          }
+          case 0x44 : { //  Joint long release 
+            // switch to Setup mode
             mode = 4;
+            buzz(1000,20);
+            break;
+          }
+          case 0x22 : { //  Down short release 
+            // skip to previous result
+            break;
+          }
+          case 0x23 : { //  Down long start 
+            // continuous skip to previous (until release)
+            break;
+          }
+          case 0x24 : { //  Down long release 
+            // stop skipping
+            break;
+          }
+          case 0x32 : { //  Up short release 
+            // skip to next result
+            break;
+          }
+          case 0x33 : { //  Up long start 
+            // continuous skip to next (until release)
+            break;
+          }
+          case 0x34 : { //  Up long release 
+            // stop skipping
             break;
           }
         }
         break;
       }
-      case 4: {  // SETUP
-        switch (event1) {
+      case 4: {  // SETUP - TAKE HORIZON
+        switch (event) {
           case 0x44 : { // 00 Joint long release 
             mode = 1;
+            buzz(1000,20);
+            break;
+          }
+          case 0x12 : { // Confirm short release 
+            // confirm values
+            // switch to next digit
+            break;
+          }
+          case 0x14 : { // Confirm long release 
+            // confirm values
+            // switch to next setup parameter
+            break;
+          }
+          case 0x22 : { //  Down short release 
+            // reduce parameter by one step
+            break;
+          }
+          case 0x23 : { //  Down long start 
+            // continuous reduce parameter (until release)
+            break;
+          }
+          case 0x24 : { //  Down long release 
+            // stop reducing
+            break;
+          }
+          case 0x32 : { //  Up short release 
+            // increase parameter by one step
+            break;
+          }
+          case 0x33 : { //  Up long start 
+            // continuous increase parameter (until release)
+            break;
+          }
+          case 0x34 : { //  Up long release 
+            // stop increasing
             break;
           }
         }
@@ -144,49 +292,7 @@ void checkSwitches() {
   }
 }
 
- boolean checkEvent(char event[2]) {
-  boolean isEvent = false;
-  checkSwitches();
-  for (int i=3; i>=0; i--) { 
-    if (longPress[i]!=oldLongPress[i]) {
-      if (longPress[i]==1) {// start long
-        event[0]=bEvents[2];
-        event[1]=bNames[i];
-        isEvent = true;
-        break;
-      }
-      if (longPress[i]==0) {// released long
-        event[0]=bEvents[3];
-        event[1]=bNames[i];
-        isEvent = true;
-        break;
-      }
-    }
-    if (pressed[i]!=oldPressed[i]) {
-      if (pressed[i]==1) {// pressed
-        event[0]=bEvents[0];
-        event[1]=bNames[i];
-        isEvent = true;
-        break;
-      }
-      if (pressed[i]==0) {// released
-        event[0]=bEvents[1];
-        event[1]=bNames[i];
-        isEvent = true;
-        break;
-      }
-    }
-  }
-  for (int i=0; i<4; i++) {
-    oldPressed[i]=pressed[i];
-    oldLongPress[i]=longPress[i];
-  }
-  noButtons = ((pressed[0]==0) && (pressed[1]==0) && (pressed[2]==0) && (pressed[3]==0));
-  return isEvent;
-}
-
-
- byte checkEvent1() {
+ byte checkEvent() {
   byte event = 255; // if no event return 255
   checkSwitches();
   for (int i=4; i>0; i--) { 
@@ -217,4 +323,16 @@ void checkSwitches() {
   }
   noButtons = ((pressed[0]==0) && (pressed[1]==0) && (pressed[2]==0) && (pressed[3]==0));
   return event;
+}
+
+void buttonBeep () {
+  tone(buzzer, BUZZFREQ); // Send 1KHz sound signal...
+  delay(BUZZLEN);        // ...for 1 sec
+  noTone(buzzer);     // Stop sound...
+}
+
+void buzz (int freq, int len) {
+  tone(buzzer, freq); //
+  delay(len);        //
+  noTone(buzzer);     //
 }
