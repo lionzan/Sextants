@@ -242,3 +242,58 @@ void cGEStoLocal ( float time, float cGeoEquatSpherical[2], float cLocal[2] ) {
 
     
 }
+
+void moonGeocentricSpherical ( float time ) {
+/*****************************
+*
+* Compute Moon  
+*
+* TO BE COMPLETED!!!
+*
+*******************************/
+
+    float m = JulianDay / 12; //month, approximation
+	float d = 367 * 2000 - 7 * ( 2000 + (m / 12 + 9) / 12 ) / 4 + 275 * m/9 + JulianDay - 730530;
+	d = d + (TimeOfDay / 3600.0f) / 24.0;
+
+    // SUN
+    float Ns = 0.0;                                                 //longitude of the ascending node
+    float is = 0.0;                                                 //inclination to the ecliptic
+    float ws = (282.9404 + 4.70935E-5 * d) / 180 * DEG_TO_RAD;      //argument of perihelion
+    float as = 1.000000;                                            //semi-major axis
+    float es = (0.016709 - 1.151E-9 * d;                            //eccentricity
+    float Ms = (356.0470 + 0.9856002585 * d) / 180 * DEG_TO_RAD;    //mean anomaly
+    
+    float Es = Ms + es * sin(Ms) * ( 1.0 + es * cos(Ms) );
+    float xvs = cos(Es) - es;
+    float yvs = sqrt( 1.0 - es * es ) * sin(Es);
+    float vs = atan2( yvs, xvs )
+    float rs = sqrt( xvs * xvs + yvs * yvs )
+
+    // MOON
+	float Nm = (125.1228 - 0.0529538083 * d) / 180 * DEG_TO_RAD;     //longitude of the ascending node
+	float im = 5.1454 / 180 * DEG_TO_RAD;                            //inclination to the ecliptic
+	float wm = (318.0634 + 0.1643573223 * d) / 180 * DEG_TO_RAD;     //argument of perihelion
+    float am = 60.2666;                                              //semi-major axis
+    float em = 0.054900;                                             //eccentricity
+    float Mm = (115.3654 + 13.0649929509 * d) / 180.0f * DEG_TO_RAD; //mean anomaly
+
+    float Em = Mm + em * sin(Mm) * ( 1.0 + em * cos(Mm) );
+	Em = Em - ( Em - em * sin(Em) - Mm ) / ( 1 - em * cos(Em) );
+    float xvm = ( cos(Em) - e );
+    float yvm = ( sqrt(1.0 - em * em) * sin(Em) );
+    float vm = atan2( yvm, xvm );
+
+    float Ls = Ms + ws; //       Mean Longitude of the Sun  (Ns=0)
+    float Lm = Mm + wm + Nm; //  Mean longitude of the Moon
+    float D = Lm - Ls; //        Mean elongation of the Moon
+    float F = Lm - Nm; //        Argument of latitude for the Moon
+
+    float xh = ( cos(N) * cos(v+w) - sin(N) * sin(v+w) * cos(i) );
+    float yh = ( sin(N) * cos(v+w) + cos(N) * sin(v+w) * cos(i) );
+    float zh = ( sin(v+w) * sin(i) );
+
+    MoonPhi = atan2( yh, xh ); //longitude
+    MoonTheta = atan2( zh, sqrt(xh*xh+yh*yh) ); //latitude
+
+}
