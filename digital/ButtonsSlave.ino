@@ -107,7 +107,7 @@ void checkSwitches() {
       }else{
         longPress[index] = 0;
       }
-      if (millis() - stateSince[index] > ACTIVESTART) {
+      if ((index == 3) || (millis() - stateSince[index] > ACTIVESTART)) {
         activePress[index] = pressed[index];
       }else{
         activePress[index] = 0;
