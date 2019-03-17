@@ -26,7 +26,7 @@
 #define BUTT_UP      0x03
 #define BUTT_JOINT   0x04
 
-#define SHORTSTART 200     //delay to become a genuine short press, not possible to do joint anymore
+#define ACTIVESTART 200     //delay to become a genuine short press, not possible to do joint anymore
 #define LONGSTART  500     //delay to become a long press
 #define MAXINT 4294967295 // the max value of an int after which millis rolls over
 
@@ -34,6 +34,7 @@
 byte buttons[] = {4, 5, 6}; // button pins
 boolean noButtons = true; // no buttons pressed
 boolean afterJointRelease = false; //the last event was a Joint Release, so next release of UP or DOWN are not reported
+boolean activeUDJ = false; //one button of UDJ is active, to avoid activating the others
  
 //track if a button is just pressed, just released, or 'currently pressed'
 byte pressed[NUMBUTTONS], oldPressed[NUMBUTTONS];
