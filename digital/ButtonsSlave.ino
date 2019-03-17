@@ -132,6 +132,9 @@ byte checkEvent() {
           break;
         } else {
           event = EVENT_RELEASE_LONG + 0x10 * i;
+          if (i > 0) {
+            activeUDJ = false;
+          }
           if (i == BUTT_JOINT) {
             afterJointRelease = true;
             Serial.println("afterJointRelease = TRUE");
@@ -141,11 +144,20 @@ byte checkEvent() {
       }
     }
     if (activePress[i-1]!=oldActivePress[i-1]) {
-      if (activePress[i-1]==1) {// pressed
+      if (activePress[i-1] == 1) {// pressed
+        if ((i > 0) && (activeUDJ == true)) {
+          break;
+        }
+        if (i > 0) {
+          activeUDJ = true;
+        }
         event = EVENT_PRESS + 0x10 * i;
         break;
       }
-      if (activePress[i-1]==0) {// released
+      if (activePress[i-1] == 0) {// released
+        if (i > 0) {
+          activeUDJ = false;
+        }
         event = EVENT_RELEASE_SHORT + 0x10 * i;
         break;
       }
