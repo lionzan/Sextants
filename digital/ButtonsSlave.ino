@@ -30,6 +30,7 @@ U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NONE|U8G_I2C_OPT_DEV_0);	// I2C / TWI
 #define BUTT_JOINT   0x40
 
 #define LONGSTART 500     //delay to become a long press
+#define MAXINT 4294967295 // the max value of an int after which millis rolls over
 
 //define the buttons
 byte buttons[] = {4, 5, 6}; // button pins
@@ -74,12 +75,12 @@ void loop() {
 void checkSwitches() {
   static byte previousState[NUMBUTTONS];
   static byte currentState[NUMBUTTONS];
-  static long lastTime;
+  static unsigned long lastTime;
   static long stateSince[NUMBUTTONS];
   byte index;
   if (millis() < lastTime) {
-    // we wrapped around, move lastTime back by a full cycle
-    lastTime -= 4294967295;
+    // we wrapped around, skip this iteration
+    lastTime = millis();
   }
   if ((lastTime + DEBOUNCE) > millis()) {
     // not enough time has passed to debounce
@@ -116,27 +117,27 @@ void checkSwitches() {
   }
 }
 
- byte checkEvent() {
-  byte event = 255; // if no event return 255
+byte checkEvent() {
+  byte event = 0xFF; // if no event return 255
   checkSwitches();
   for (int i=4; i>0; i--) { 
     if (longPress[i-1]!=oldLongPress[i-1]) {
       if (longPress[i-1]==1) { // start long
-        event = 3 + 16 * i;
+        event = EVENT_START_LONG + 0x10 * i;
         break;
       }
       if (longPress[i-1]==0) { // released long
-        event = 4 + 16 * i;
+        event = EVENT_RELEASE_LONG + 0x10 * i;
         break;
       }
     }
     if (pressed[i-1]!=oldPressed[i-1]) {
       if (pressed[i-1]==1) {// pressed
-        event = 1 + 16 * i;
+        event = EVENT_PRESS + 0x10 * i;
         break;
       }
       if (pressed[i-1]==0) {// released
-        event = 2 + 16 * i;
+        event = EVENT_RELEASE_SHORT + 0x10 * i;
         break;
       }
     }
@@ -149,55 +150,9 @@ void checkSwitches() {
   return event;
 }
 
-void buttonBeep () {
-  tone(BUZZPIN, BUZZFREQ); // Send 1KHz sound signal...
-  delay(BUZZLEN);        // ...for 1 sec
-  noTone(BUZZPIN);     // Stop sound...
-}
-
 void buzz (int freq, int len) {
-  tone(BUZZPIN, freq); //
-  delay(len);        //
-  noTone(BUZZPIN);     //
-}
-
-void drawYPR(){
-  char show[8];
-  if (mode == 0) {
-    
-  }
-  int xr = 32 * cos(droll*DEG_TO_RAD);
-  int yr = -32 * sin(droll*DEG_TO_RAD);
-  int zr = 160 * sin(dpitch*DEG_TO_RAD); // arbitrary number
-  int xy = 32 * sin(dyaw*DEG_TO_RAD);
-  int yy = -32 * cos(dyaw*DEG_TO_RAD);
-  int xa = 32;
-  int ya = 64;
-  int xb = 32;
-  int yb = 64;
-// modes to be implemented
-
-// write mode name
-  u8g.setFontPosBottom(); 
-  u8g.drawStr( 32 - u8g.getStrWidth(modes[mode])/2, 120, modes[mode]);
-// draw compass needle
-  u8g.drawLine(xa,ya,xa+xy,ya+yy);
-// draw horizon
-  u8g.drawLine(xb-xr,yb-yr+zr,xb+xr,yb+yr+zr);
-// write elevation and azimuth
-  u8g.setFontPosBottom(); 
-  dtostrf(dazi, 6, 2, show);
-  u8g.drawStr( 64 - u8g.getStrWidth(show), 127, show);
-  dtostrf(dele, 6, 2, show);
-  u8g.drawStr( 0, 127, show);
-// write star name
-  u8g.setFontPosTop(); 
-  u8g.drawStr(xa - u8g.getStrWidth(starName)/2, 0, starName);
-}
-
-void drawTxt(String str) {
-  char show[100];
-  str.toCharArray(show, 100);
-  u8g.drawStr( 10, 10, show);
+  tone(BUZZPIN, freq);
+  delay(len);
+  noTone(BUZZPIN);
 }
 
