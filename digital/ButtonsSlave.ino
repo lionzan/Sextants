@@ -8,14 +8,11 @@
  * 
  **********************************************/
 
-//U8GLIB_SSD1309_128X64 u8g(13,11,255,9,8); //SPI OLED board connection setup: SPI Com: SCK = 13, MOSI = 11, CS = NONE, A0 = 9, RST = 8
-U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NONE|U8G_I2C_OPT_DEV_0);	// I2C / TWI 
-
 #define NUMBUTTONS 4     // 3 physical buttons + 1 combination of 2
 #define DEBOUNCE 5       // how many ms to debounce, 5+ ms is usually plenty
 #define BUZZFREQ 1000    // buzzer frequency
 #define BUZZLEN 50       // buzzer duration
-#DEFINE BUZZPIN 9        // buzzer pin
+#define BUZZPIN 9        // buzzer pin
 
 // button events
 #define EVENT_PRESS         0x01
@@ -34,9 +31,8 @@ U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NONE|U8G_I2C_OPT_DEV_0);	// I2C / TWI
 
 //define the buttons
 byte buttons[] = {4, 5, 6}; // button pins
-// char bNames[] ="CUDJ"; // buttons names CONFIRM, UP,  DOWN, JOINT UP+DOWN
-// char bEvents[] ="pslr"; // event names PRESS, RELEASE AFTER SHORT, BEGIN LONG, RELEASE AFTER LONG
 boolean noButtons = true; // no buttons pressed
+boolean afterJointRelease = false; //the last event was a Joint Release, so next release of UP or DOWN are not reported
  
 //track if a button is just pressed, just released, or 'currently pressed'
 byte pressed[NUMBUTTONS], oldPressed[NUMBUTTONS];
@@ -64,11 +60,7 @@ void setup() {
 void loop() {
   byte event = checkEvent();
   if (event != 255) {
-    Serial.print(event, HEX);
-    Serial.print(" ");
-    Serial.print(modeNames[mode-1]);
-    Serial.print(" ");
-    Serial.println(modeNames[mode-1]);
+    Serial.println(event, HEX);
   }
 }
  
@@ -127,8 +119,16 @@ byte checkEvent() {
         break;
       }
       if (longPress[i-1]==0) { // released long
-        event = EVENT_RELEASE_LONG + 0x10 * i;
-        break;
+        if ((afterJointRelease == true) && ((i == BUTT_UP) || (i == BUTT_DOWN))) { // it's the release fo the second joint long button
+          afterJointRelease = false;                                               // reset flag and do not return anything
+          break;
+        } else {
+          event = EVENT_RELEASE_LONG + 0x10 * i;
+          if (i == BUTT_JOINT) {
+            afterJointRelease = true;
+          }
+          break;
+        }
       }
     }
     if (pressed[i-1]!=oldPressed[i-1]) {
@@ -155,4 +155,3 @@ void buzz (int freq, int len) {
   delay(len);
   noTone(BUZZPIN);
 }
-
