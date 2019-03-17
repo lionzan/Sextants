@@ -102,11 +102,15 @@ void checkSwitches() {
         stateSince[index] = millis();
       }
       pressed[index] = !currentState[index];  //remember, digital HIGH means NOT pressed
+      
+      // check if long press started
       if (millis() - stateSince[index] > LONGSTART) {
         longPress[index] = pressed[index];
       }else{
         longPress[index] = 0;
       }
+      
+      // check if active press started
       if ((index == 3) || (millis() - stateSince[index] > ACTIVESTART)) {
         activePress[index] = pressed[index];
       }else{
@@ -120,7 +124,20 @@ void checkSwitches() {
 byte checkEvent() {
   byte event = 0xFF; // if no event return 255
   checkSwitches();
-  for (byte i=4; i>0; i--) { 
+  if (longPress[0]!=oldLongPress[0]) {
+    if (longPress[0]==1) { // start long
+      event = EVENT_START_LONG + 0x10;
+    } else {
+      event = EVENT_RELEASE_LONG + 0x10;
+    }
+  } else if (activePress[0]!=oldActivePress[0]) {
+    if (activePress[0]==1) { // start long
+      event = EVENT_PRESS + 0x10;
+    } else {
+      event = EVENT_RELEASE_SHORT + 0x10;
+    }
+  }
+  for (byte i=4; i>1; i--) { 
     if (longPress[i-1]!=oldLongPress[i-1]) {
       if (longPress[i-1]==1) { // start long
         event = EVENT_START_LONG + 0x10 * i;
