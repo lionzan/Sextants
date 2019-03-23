@@ -2,7 +2,7 @@
  *
  * Buttons Slave module of Sextant
  * 
- * 17 March 2019
+ * 23 March 2019
  * 
  * @lionzan
  * 
@@ -27,11 +27,16 @@
 #define ST_LONGPRESS  0x03
 #define ST_INHIBITED  0xFF
 
-// button events
-#define EVENT_PRESS         0x00
-#define EVENT_RELEASE_SHORT 0x01
-#define EVENT_START_LONG    0x02
-#define EVENT_RELEASE_LONG  0x03
+// event byte structure
+// button - isStart - status
+// 0000     0         000
+
+// button relevant actions
+#define EVENT_END_PRESS   0x01 //0001
+#define EVENT_START_SHORT 0x0A //1010
+#define EVENT_END_SHORT   0x02 //0010
+#define EVENT_START_LONG  0x0B //1011
+#define EVENT_END_LONG    0x03 //0011
 
 
 #define INHIBIT_JOINT 200     //delay to become a genuine short press, not possible to do joint anymore
@@ -68,23 +73,20 @@ void loop() {
   byte action;
   event = checkEvent();
   if (event!=0xFF) {
-    Serial.println(event,HEX);
-    button = (event & 0xF0) >> 4;
+    Serial.println(event,BIN);
+    button = (event >> 4) - 0x08;
     action = event & 0x0F;
-    Serial.print(button);
-    Serial.println(action);
     switch (action) {
-//      case EVENT_RELEASE_SHORT : {
-//        buzz (1000,100);
-//        break;
-//      }
+      case EVENT_START_SHORT : {
+        buzz (1000,100);
+        break;
+      }
       case EVENT_START_LONG : {
         buzz (1000,200);
         break;
       }
-      case EVENT_PRESS : {
+      case EVENT_END_PRESS : {
         buzz (1000,100);
-//        if (button==BUTT_JOINT) {buzz (1000,100);}
         break;
       }
     }
@@ -136,6 +138,7 @@ bool checkSwitches() {
 }
 
 byte checkEvent() {  
+  // update needed: respond to multiple events happening in the same cycle
   byte event = 0xFF;
   if (checkSwitches()==true) {
     for (int i=BUTT_JOINT; i>=BUTT_CONFIRM; i--) {
@@ -146,10 +149,12 @@ byte checkEvent() {
           buttStatus[BUTT_UP] = ST_INHIBITED;
           buttStatus[BUTT_DOWN] = ST_INHIBITED;
           buttStatus[BUTT_JOINT] = ST_PRESSED;
-//          event = 0x10 * i + EVENT_PRESS;
         }
       } else if (justReleased[i]==1) {
-        switch (buttStatus[i]) {
+        if  (buttStatus[i]!=ST_INHIBITED) {
+          event = 0X80 + ((byte)i << 4) + ((byte)buttStatus[i]);
+        }
+/*        switch (buttStatus[i]) {
           case ST_INHIBITED :{
             break;
           }
@@ -165,7 +170,7 @@ byte checkEvent() {
             event = 0x10 * i + EVENT_RELEASE_SHORT;
             break;
           }
-        }
+        } */
         buttStatus[i]=ST_RELEASED;
       }
     }
@@ -173,11 +178,13 @@ byte checkEvent() {
   // check status function of time
   for (int i=BUTT_JOINT; i>=BUTT_CONFIRM; i--) {
     if ((millis()-pressedSince[i]>LONG_START) && buttStatus[i]==ST_ACTIVE) {
-      buttStatus[i]=ST_LONGPRESS;
-      event = 0x10 * i + EVENT_START_LONG;
+      buttStatus[i] = ST_LONGPRESS;
+      event = 0X80 + ((byte)i << 4) + ((byte)buttStatus[i]) + 8;
+//      event = 0x10 * i + EVENT_START_LONG;
     } else if ((millis()-pressedSince[i]>INHIBIT_JOINT) && (buttStatus[i]==ST_PRESSED)) {
       buttStatus[i]=ST_ACTIVE;
-      event = 0x10 * i + EVENT_PRESS;
+      event = 0X80 + ((byte)i << 4) + ((byte)buttStatus[i]) + 8;
+//      event = 0x10 * i + EVENT_PRESS;
       switch (i) {
         case BUTT_UP :{
           buttStatus[BUTT_JOINT] = ST_INHIBITED;
