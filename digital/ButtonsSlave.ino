@@ -74,12 +74,17 @@ void loop() {
     Serial.print(button);
     Serial.println(action);
     switch (action) {
-      case EVENT_RELEASE_SHORT : {
-        buzz (1000,100);
+//      case EVENT_RELEASE_SHORT : {
+//        buzz (1000,100);
+//        break;
+//      }
+      case EVENT_START_LONG : {
+        buzz (1000,200);
         break;
       }
-      case EVENT_START_LONG : {
-        buzz (1000,500);
+      case EVENT_PRESS : {
+        buzz (1000,100);
+//        if (button==BUTT_JOINT) {buzz (1000,100);}
         break;
       }
     }
@@ -140,10 +145,8 @@ byte checkEvent() {
         if (i== BUTT_JOINT) {
           buttStatus[BUTT_UP] = ST_INHIBITED;
           buttStatus[BUTT_DOWN] = ST_INHIBITED;
-          buttStatus[BUTT_JOINT] = ST_ACTIVE;
-          Serial.println("PRESS 3 ");
-          // return EVENT PRESS JOINT
-          event = 0x10 * i + EVENT_PRESS;
+          buttStatus[BUTT_JOINT] = ST_PRESSED;
+//          event = 0x10 * i + EVENT_PRESS;
         }
       } else if (justReleased[i]==1) {
         switch (buttStatus[i]) {
@@ -151,23 +154,14 @@ byte checkEvent() {
             break;
           }
           case ST_LONGPRESS :{
-            Serial.print("RELEASE LONG ");
-            Serial.println(i);
-            // return EVENT RELEASE LONG
             event = 0x10 * i + EVENT_RELEASE_LONG;
             break;
           }
           case ST_ACTIVE :{
-            Serial.print("RELEASE SHORT ");
-            Serial.println(i);
-            // return EVENT RELEASE SHORT
             event = 0x10 * i + EVENT_RELEASE_SHORT;
             break;
           }
           case ST_PRESSED :{
-            Serial.print("RELEASE SHORT ");
-            Serial.println(i);
-            // return EVENT RELEASE SHORT
             event = 0x10 * i + EVENT_RELEASE_SHORT;
             break;
           }
@@ -180,12 +174,10 @@ byte checkEvent() {
   for (int i=BUTT_JOINT; i>=BUTT_CONFIRM; i--) {
     if ((millis()-pressedSince[i]>LONG_START) && buttStatus[i]==ST_ACTIVE) {
       buttStatus[i]=ST_LONGPRESS;
-            Serial.print("START LONG ");
-            Serial.println(i);
-      // return EVENT START LONG
       event = 0x10 * i + EVENT_START_LONG;
     } else if ((millis()-pressedSince[i]>INHIBIT_JOINT) && (buttStatus[i]==ST_PRESSED)) {
       buttStatus[i]=ST_ACTIVE;
+      event = 0x10 * i + EVENT_PRESS;
       switch (i) {
         case BUTT_UP :{
           buttStatus[BUTT_JOINT] = ST_INHIBITED;
