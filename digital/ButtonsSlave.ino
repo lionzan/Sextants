@@ -2,16 +2,17 @@
  *
  * Buttons Slave module of Sextant
  * 
- * 23 March 2019
+ * 17 March 2019
  * 
  * @lionzan
+ * 
+ * connect buttons between button pins and to ground
+ * connect the buzzer between buzzer pin and ground
  * 
  **********************************************/
 
 #define NUMBUTTONS 4     // 3 physical buttons + 1 combination of 2
 #define DEBOUNCE 5       // how many ms to debounce, 5+ ms is usually plenty
-#define BUZZFREQ 1000    // buzzer frequency
-#define BUZZLEN 50       // buzzer duration
 #define BUZZPIN 9        // buzzer pin
 
 // buttons
