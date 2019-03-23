@@ -14,37 +14,39 @@
 #define BUZZLEN 50       // buzzer duration
 #define BUZZPIN 9        // buzzer pin
 
-// button events
-#define EVENT_PRESS         0x01
-#define EVENT_RELEASE_SHORT 0x02
-#define EVENT_START_LONG    0x03
-#define EVENT_RELEASE_LONG  0x04
-
 // buttons
-#define BUTT_CONFIRM 0x01
-#define BUTT_DOWN    0x02
-#define BUTT_UP      0x03
-#define BUTT_JOINT   0x04
+#define BUTT_CONFIRM 0x00
+#define BUTT_DOWN    0x01
+#define BUTT_UP      0x02
+#define BUTT_JOINT   0x03
 
-#define ACTIVESTART 200     //delay to become a genuine short press, not possible to do joint anymore
-#define LONGSTART  500     //delay to become a long press
+// buttons status
+#define ST_RELEASED   0x00
+#define ST_PRESSED    0x01
+#define ST_ACTIVE     0x02
+#define ST_LONGPRESS  0x03
+#define ST_INHIBITED  0xFF
+
+// button events
+#define EVENT_PRESS         0x00
+#define EVENT_RELEASE_SHORT 0x01
+#define EVENT_START_LONG    0x02
+#define EVENT_RELEASE_LONG  0x03
+
+
+#define INHIBIT_JOINT 200     //delay to become a genuine short press, not possible to do joint anymore
+#define LONG_START    500     //delay to become a long press
 #define MAXINT 4294967295 // the max value of an int after which millis rolls over
 
 //define the buttons
 byte buttons[] = {4, 5, 6}; // button pins
-boolean noButtons = true; // no buttons pressed
-boolean afterJointRelease = false; //the last event was a Joint Release, so next release of UP or DOWN are not reported
-boolean activeUDJ = false; //one button of UDJ is active, to avoid activating the others
- 
+
 //track if a button is just pressed, just released, or 'currently pressed'
 byte pressed[NUMBUTTONS], oldPressed[NUMBUTTONS];
 byte justPressed[NUMBUTTONS], justReleased[NUMBUTTONS];
-byte longPress[NUMBUTTONS], oldLongPress[NUMBUTTONS];
-byte activePress[NUMBUTTONS], oldActivePress[NUMBUTTONS];
+byte buttStatus[NUMBUTTONS] = {ST_RELEASED,ST_RELEASED,ST_RELEASED,ST_RELEASED};
+unsigned long pressedSince[NUMBUTTONS] = {0,0,0,0};
 
-// current mode
-// char modeNames[] = "FMPS"; // FIND, MEASURE, POSITION, SETUP . SF, TS, PF, SU
-// byte mode = 1; //start from mode STARFINDER
 
 void setup() {
   byte i;
@@ -61,13 +63,31 @@ void setup() {
 }
 
 void loop() {
-  byte event = checkEvent();
-  if (event != 255) {
-    Serial.println(event, HEX);
+  byte event;
+  byte button;
+  byte action;
+  event = checkEvent();
+  if (event!=0xFF) {
+    Serial.println(event,HEX);
+    button = (event & 0xF0) >> 4;
+    action = event & 0x0F;
+    Serial.print(button);
+    Serial.println(action);
+    switch (action) {
+      case EVENT_RELEASE_SHORT : {
+        buzz (1000,100);
+        break;
+      }
+      case EVENT_START_LONG : {
+        buzz (1000,500);
+        break;
+      }
+    }
   }
 }
  
-void checkSwitches() {
+bool checkSwitches() {
+  bool event = false;
   static byte previousState[NUMBUTTONS];
   static byte currentState[NUMBUTTONS];
   static unsigned long lastTime;
@@ -79,7 +99,7 @@ void checkSwitches() {
   }
   if ((lastTime + DEBOUNCE) > millis()) {
     // not enough time has passed to debounce
-    return; 
+    return event; 
   }
   // ok we have waited DEBOUNCE milliseconds, lets reset the timer
   lastTime = millis();
@@ -96,96 +116,90 @@ void checkSwitches() {
         // just pressed
         justPressed[index] = 1;
         stateSince[index] = millis();
+        event=true;
       }
       else if ((pressed[index] == HIGH) && (currentState[index] == HIGH)) {
         justReleased[index] = 1; // just released
         stateSince[index] = millis();
+        event=true;
       }
       pressed[index] = !currentState[index];  //remember, digital HIGH means NOT pressed
-      
-      // check if long press started
-      if (millis() - stateSince[index] > LONGSTART) {
-        longPress[index] = pressed[index];
-      }else{
-        longPress[index] = 0;
-      }
-      
-      // check if active press started
-      if ((index == 3) || (millis() - stateSince[index] > ACTIVESTART)) {
-        activePress[index] = pressed[index];
-      }else{
-        activePress[index] = 0;
-      }
-    }
+    } 
     previousState[index] = currentState[index]; //keep a running tally of the buttons
   }
+  return event;
 }
 
-byte checkEvent() {
-  byte event = 0xFF; // if no event return 255
-  checkSwitches();
-  if (longPress[0]!=oldLongPress[0]) {
-    if (longPress[0]==1) { // start long
-      event = EVENT_START_LONG + 0x10;
-    } else {
-      event = EVENT_RELEASE_LONG + 0x10;
-    }
-  } else if (activePress[0]!=oldActivePress[0]) {
-    if (activePress[0]==1) { // start long
-      event = EVENT_PRESS + 0x10;
-    } else {
-      event = EVENT_RELEASE_SHORT + 0x10;
-    }
-  }
-  for (byte i=4; i>1; i--) { 
-    if (longPress[i-1]!=oldLongPress[i-1]) {
-      if (longPress[i-1]==1) { // start long
-        event = EVENT_START_LONG + 0x10 * i;
-        break;
-      }
-      if (longPress[i-1]==0) { // released long
-        if ((afterJointRelease == true) && ((i == BUTT_UP) || (i == BUTT_DOWN))) { // it's the release fo the second joint long button
-          afterJointRelease = false; // reset flag and do not return anything
-          Serial.println("afterJointRelease = FALSE");
-          break;
-        } else {
-          event = EVENT_RELEASE_LONG + 0x10 * i;
-          if (i > 0) {
-            activeUDJ = false;
+byte checkEvent() {  
+  byte event = 0xFF;
+  if (checkSwitches()==true) {
+    for (int i=BUTT_JOINT; i>=BUTT_CONFIRM; i--) {
+      if ((justPressed[i]==1) && (buttStatus[i]!=ST_INHIBITED)) {
+        buttStatus[i]=ST_PRESSED;
+        pressedSince[i] = millis();
+        if (i== BUTT_JOINT) {
+          buttStatus[BUTT_UP] = ST_INHIBITED;
+          buttStatus[BUTT_DOWN] = ST_INHIBITED;
+          buttStatus[BUTT_JOINT] = ST_ACTIVE;
+          Serial.println("PRESS 3 ");
+          // return EVENT PRESS JOINT
+          event = 0x10 * i + EVENT_PRESS;
+        }
+      } else if (justReleased[i]==1) {
+        switch (buttStatus[i]) {
+          case ST_INHIBITED :{
+            break;
           }
-          if (i == BUTT_JOINT) {
-            afterJointRelease = true;
-            Serial.println("afterJointRelease = TRUE");
+          case ST_LONGPRESS :{
+            Serial.print("RELEASE LONG ");
+            Serial.println(i);
+            // return EVENT RELEASE LONG
+            event = 0x10 * i + EVENT_RELEASE_LONG;
+            break;
           }
+          case ST_ACTIVE :{
+            Serial.print("RELEASE SHORT ");
+            Serial.println(i);
+            // return EVENT RELEASE SHORT
+            event = 0x10 * i + EVENT_RELEASE_SHORT;
+            break;
+          }
+          case ST_PRESSED :{
+            Serial.print("RELEASE SHORT ");
+            Serial.println(i);
+            // return EVENT RELEASE SHORT
+            event = 0x10 * i + EVENT_RELEASE_SHORT;
+            break;
+          }
+        }
+        buttStatus[i]=ST_RELEASED;
+      }
+    }
+  }  
+  // check status function of time
+  for (int i=BUTT_JOINT; i>=BUTT_CONFIRM; i--) {
+    if ((millis()-pressedSince[i]>LONG_START) && buttStatus[i]==ST_ACTIVE) {
+      buttStatus[i]=ST_LONGPRESS;
+            Serial.print("START LONG ");
+            Serial.println(i);
+      // return EVENT START LONG
+      event = 0x10 * i + EVENT_START_LONG;
+    } else if ((millis()-pressedSince[i]>INHIBIT_JOINT) && (buttStatus[i]==ST_PRESSED)) {
+      buttStatus[i]=ST_ACTIVE;
+      switch (i) {
+        case BUTT_UP :{
+          buttStatus[BUTT_JOINT] = ST_INHIBITED;
+          buttStatus[BUTT_DOWN] = ST_INHIBITED;
+          break;
+        }
+        case BUTT_DOWN :{
+          buttStatus[BUTT_JOINT] = ST_INHIBITED;
+          buttStatus[BUTT_UP] = ST_INHIBITED;
           break;
         }
       }
     }
-    if (activePress[i-1]!=oldActivePress[i-1]) {
-      if (activePress[i-1] == 1) {// pressed
-        if ((i > 0) && (activeUDJ == true)) {
-          break;
-        }
-        if (i > 0) {
-          activeUDJ = true;
-        }
-        event = EVENT_PRESS + 0x10 * i;
-        break;
-      }
-      if (activePress[i-1] == 0) {// released
-        if (i > 0) {
-          activeUDJ = false;
-        }
-        event = EVENT_RELEASE_SHORT + 0x10 * i;
-        break;
-      }
-    }
-  }
-  for (int i=0; i<4; i++) {
-    oldLongPress[i]=longPress[i];
-    oldActivePress[i]=activePress[i];
-  }
-  noButtons = ((pressed[0]==0) && (pressed[1]==0) && (pressed[2]==0) && (pressed[3]==0));
+  } 
   return event;
 }
 
