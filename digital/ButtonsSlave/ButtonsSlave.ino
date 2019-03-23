@@ -10,6 +10,16 @@
  * connect the buzzer between buzzer pin and ground
  * 
  **********************************************/
+#include <Wire.h>
+#include <ds3231.h>
+
+ts t; //ts is a struct findable in ds3231.h
+
+// modes
+#define M_STARFINDER 0x00
+#define M_TAKE_SIGHT 0x01
+#define M_POS_FIX    0x02
+#define M_SETUP      0x03
 
 #define NUMBUTTONS 4    // 3 physical buttons + 1 combination of 2
 #define DEBOUNCE 5      // how many ms to debounce, 5+ ms is usually plenty
@@ -36,15 +46,17 @@
 
 // button relevant actions
 #define EVENT_END_PRESS   0x01 //0001
-#define EVENT_START_SHORT 0x0A //1010
 #define EVENT_END_SHORT   0x02 //0010
-#define EVENT_START_LONG  0x0B //1011
 #define EVENT_END_LONG    0x03 //0011
+#define EVENT_START_SHORT 0x06 //0110
+#define EVENT_START_LONG  0x07 //0111
 
 
 #define INHIBIT_JOINT 200     //delay to become a genuine short press, not possible to do joint anymore
 #define LONG_START    500     //delay to become a long press
 #define MAXINT 4294967295 // the max value of an int after which millis rolls over
+
+byte mode = 0x00;
 
 //define the buttons
 byte buttons[] = {4, 5, 6}; // button pins
@@ -55,9 +67,87 @@ byte justPressed[NUMBUTTONS], justReleased[NUMBUTTONS];
 byte buttStatus[NUMBUTTONS] = {ST_RELEASED,ST_RELEASED,ST_RELEASED,ST_RELEASED};
 unsigned long pressedSince[NUMBUTTONS] = {0,0,0,0};
 
+//define action table. Each action has 2 components: switch to mode (3 bytes) and perform procedure (5 bytes)
+
+byte action[4][4][8] = {
+  { // current mode M_STARFINDER
+    { // button CONFIRM
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    },
+    { // button pressed UP
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    },
+    { // button pressed DOWN
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    },
+    { // button pressed JOINT
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, (M_SETUP << 5), 0xFF, 0xFF, 0xFF, 0xFF
+    }
+  },
+  { // current mode M_TAKE_SIGHT
+    { // button CONFIRM
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    },
+    { // button pressed UP
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    },
+    { // button pressed DOWN
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    },
+    { // button pressed JOINT
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, (M_SETUP << 5), 0xFF, 0xFF, 0xFF, 0xFF
+    }
+  },
+  { // current mode M_POS_FIX
+    { // button CONFIRM
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    },
+    { // button pressed UP
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    },
+    { // button pressed DOWN
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    },
+    { // button pressed JOINT
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, (M_SETUP << 5), 0xFF, 0xFF, 0xFF, 0xFF
+    }
+  },
+  { // current mode M_SETUP
+    { // button CONFIRM
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    },
+    { // button pressed UP
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    },
+    { // button pressed DOWN
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    },
+    { // button pressed JOINT
+      // VOID, END_PRESS, END_SHORT, END_LONG, VOID, VOID, START_SHORT, START_LONG
+        0xFF, 0xFF, 0xFF, (M_STARFINDER << 5), 0xFF, 0xFF, 0xFF, 0xFF
+    }
+  }
+};
 
 void setup() {
   byte i;
+  Wire.begin(); //start i2c (required for connection)
+  DS3231_init(DS3231_INTCN); //register the ds3231 (DS3231_INTCN is the default address of ds3231, this is set by macro for no performance loss)
   Serial.begin(9600); //set up serial port
   // Make input & enable pull-up resistors on switch pins
   for (i=0; i< NUMBUTTONS; i++) {
@@ -70,16 +160,50 @@ void setup() {
 void loop() {
   byte event;
   byte button;
-  byte action;
+  byte act;
   int freq = BUZZHIGH;
   event = checkEvent();
   if (event!=0xFF) {
-//    Serial.println(event,BIN);
-    button = (event >> 4) - 0x08;
+    Serial.print("Event : ");
+    Serial.println(event,BIN);    
+    DS3231_get(&t); //get the value and pass to the function the pointer to t, that make an lower memory fingerprint and faster execution than use return
+  #ifdef CONFIG_UNIXTIME
+    Serial.print("Timestamp : ");
+    Serial.println(t.unixtime);
+  #endif
+    button = (event >> 4);
     if (button == BUTT_JOINT) {
       freq = BUZZLOW;
     }
-    action = event & 0x0F;
+    Serial.print("Button : ");
+    Serial.println(button);    
+    act = action[(byte)mode][(byte)event>>4][((byte)event & 0x07)];  
+    Serial.print ("Mode:");
+    Serial.print(mode);
+    Serial.print (" Button:");
+    Serial.print (event>>4,HEX);
+    Serial.print (" Event:");
+    Serial.print ((event&0x07),HEX);
+    Serial.print (" Action:");
+    Serial.print (act,BIN);
+    Serial.print (" New mode:");
+    Serial.println (act>>5,HEX);
+    if (act!=0xFF) {    mode = act>>5; }
+
+/*    switch (mode | button | action) {
+      case (M_STARFINDER | BUTT_JOINT | EVENT_END_LONG) : {
+        mode = M_SETUP;
+        break;
+      }
+      case (M_TAKE_SIGHT | BUTT_JOINT | EVENT_END_LONG) : {
+        mode = M_SETUP;
+        break;
+      }
+      case (M_POS_FIX | BUTT_JOINT | EVENT_END_LONG) : {
+        mode = M_SETUP;
+        break;
+      }
+    }
     switch (action) {
       case EVENT_END_PRESS : {
         buzz (freq,100);
@@ -93,7 +217,7 @@ void loop() {
         buzz (freq,400);
         break;
       }
-    }
+    }*/
   }
 }
  
@@ -153,30 +277,13 @@ byte checkEvent() {
         }
       } else if (justReleased[i]==1) {
         if  (buttStatus[i]!=ST_INHIBITED) {
-          event = 0X80 + ((byte)i << 4) + ((byte)buttStatus[i]);
+          event = ((byte)i << 4) + ((byte)buttStatus[i]);
           if (i==BUTT_UP) {
             buttStatus[BUTT_DOWN]=ST_RELEASED;
           } else if (i==BUTT_DOWN) {
             buttStatus[BUTT_UP]=ST_RELEASED;
           }
         }
-/*        switch (buttStatus[i]) {
-          case ST_INHIBITED :{
-            break;
-          }
-          case ST_LONGPRESS :{
-            event = 0x10 * i + EVENT_RELEASE_LONG;
-            break;
-          }
-          case ST_ACTIVE :{
-            event = 0x10 * i + EVENT_RELEASE_SHORT;
-            break;
-          }
-          case ST_PRESSED :{
-            event = 0x10 * i + EVENT_RELEASE_SHORT;
-            break;
-          }
-        } */
         buttStatus[i]=ST_RELEASED;
       }
     }
@@ -185,11 +292,11 @@ byte checkEvent() {
   for (int i=BUTT_JOINT; i>=BUTT_CONFIRM; i--) {
     if ((millis()-pressedSince[i]>LONG_START) && buttStatus[i]==ST_ACTIVE) {
       buttStatus[i] = ST_LONGPRESS;
-      event = 0X80 + ((byte)i << 4) + ((byte)buttStatus[i]) + 8;
+      event = ((byte)i << 4) + ((byte)buttStatus[i]) + 4;
 //      event = 0x10 * i + EVENT_START_LONG;
     } else if ((millis()-pressedSince[i]>INHIBIT_JOINT) && (buttStatus[i]==ST_PRESSED)) {
       buttStatus[i]=ST_ACTIVE;
-      event = 0X80 + ((byte)i << 4) + ((byte)buttStatus[i]) + 8;
+      event = ((byte)i << 4) + ((byte)buttStatus[i]) + 4;
 //      event = 0x10 * i + EVENT_PRESS;
       switch (i) {
         case BUTT_UP :{
