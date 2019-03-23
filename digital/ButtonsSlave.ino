@@ -11,9 +11,11 @@
  * 
  **********************************************/
 
-#define NUMBUTTONS 4     // 3 physical buttons + 1 combination of 2
-#define DEBOUNCE 5       // how many ms to debounce, 5+ ms is usually plenty
-#define BUZZPIN 9        // buzzer pin
+#define NUMBUTTONS 4    // 3 physical buttons + 1 combination of 2
+#define DEBOUNCE 5      // how many ms to debounce, 5+ ms is usually plenty
+#define BUZZPIN 9       // buzzer pin
+#define BUZZLOW 659     // 5th note of A 440Hz
+#define BUZZHIGH 880    // octave of A 440Hz
 
 // buttons
 #define BUTT_CONFIRM 0x00
@@ -57,9 +59,6 @@ unsigned long pressedSince[NUMBUTTONS] = {0,0,0,0};
 void setup() {
   byte i;
   Serial.begin(9600); //set up serial port
-  Serial.print("Button checker with ");
-  Serial.print(NUMBUTTONS, DEC);
-  Serial.println(" buttons");
   // Make input & enable pull-up resistors on switch pins
   for (i=0; i< NUMBUTTONS; i++) {
     pinMode(buttons[i], INPUT);
@@ -72,22 +71,26 @@ void loop() {
   byte event;
   byte button;
   byte action;
+  int freq = BUZZHIGH;
   event = checkEvent();
   if (event!=0xFF) {
-    Serial.println(event,BIN);
+//    Serial.println(event,BIN);
     button = (event >> 4) - 0x08;
+    if (button == BUTT_JOINT) {
+      freq = BUZZLOW;
+    }
     action = event & 0x0F;
     switch (action) {
+      case EVENT_END_PRESS : {
+        buzz (freq,100);
+        break;
+      }
       case EVENT_START_SHORT : {
-        buzz (1000,100);
+        buzz (freq,100);
         break;
       }
       case EVENT_START_LONG : {
-        buzz (1000,200);
-        break;
-      }
-      case EVENT_END_PRESS : {
-        buzz (1000,100);
+        buzz (freq,400);
         break;
       }
     }
@@ -99,7 +102,6 @@ bool checkSwitches() {
   static byte previousState[NUMBUTTONS];
   static byte currentState[NUMBUTTONS];
   static unsigned long lastTime;
-  static long stateSince[NUMBUTTONS];
   byte index;
   if (millis() < lastTime) {
     // we wrapped around, skip this iteration
@@ -123,12 +125,10 @@ bool checkSwitches() {
       if ((pressed[index] == LOW) && (currentState[index] == LOW)) { //Watch out here LOW has opposite meanings
         // just pressed
         justPressed[index] = 1;
-        stateSince[index] = millis();
         event=true;
       }
       else if ((pressed[index] == HIGH) && (currentState[index] == HIGH)) {
         justReleased[index] = 1; // just released
-        stateSince[index] = millis();
         event=true;
       }
       pressed[index] = !currentState[index];  //remember, digital HIGH means NOT pressed
@@ -154,6 +154,11 @@ byte checkEvent() {
       } else if (justReleased[i]==1) {
         if  (buttStatus[i]!=ST_INHIBITED) {
           event = 0X80 + ((byte)i << 4) + ((byte)buttStatus[i]);
+          if (i==BUTT_UP) {
+            buttStatus[BUTT_DOWN]=ST_RELEASED;
+          } else if (i==BUTT_DOWN) {
+            buttStatus[BUTT_UP]=ST_RELEASED;
+          }
         }
 /*        switch (buttStatus[i]) {
           case ST_INHIBITED :{
