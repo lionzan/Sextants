@@ -3,6 +3,6 @@
 
   // comment this out if you need unixtime support
   // this will add around 500 bytes to your firmware (depend of the card)
-  //#define CONFIG_UNIXTIME
+  #define CONFIG_UNIXTIME
 
 #endif
