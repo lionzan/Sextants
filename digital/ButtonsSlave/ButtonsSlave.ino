@@ -32,10 +32,10 @@ U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_MIRROR, 5, 4);
 #define BUZZHIGH 880    // octave of A 440Hz
 
 // buttons
-#define BUTT_CONFIRM 0x00
-#define BUTT_DOWN    0x01
-#define BUTT_UP      0x02
-#define BUTT_JOINT   0x03
+#define BUTT_CONFIRM 0x00 // 00
+#define BUTT_DOWN    0x01 // 01
+#define BUTT_UP      0x02 // 10
+#define BUTT_JOINT   0x03 // 11
 
 // buttons status
 #define ST_RELEASED   0x00
@@ -48,12 +48,18 @@ U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_MIRROR, 5, 4);
 // button - isStart - status
 // 0000     0         000
 
-// button relevant actions
-#define EVENT_END_PRESS   0x01 //0001
-#define EVENT_END_SHORT   0x02 //0010
-#define EVENT_END_LONG    0x03 //0011
-#define EVENT_START_SHORT 0x06 //0110
-#define EVENT_START_LONG  0x07 //0111
+// button actions
+#define EVENT_END_PRESS   0x01 //0001 relevant
+#define EVENT_END_SHORT   0x02 //0010 relevant and same action as END_PRESS
+#define EVENT_END_LONG    0x03 //0011 relevant
+#define EVENT_START_SHORT 0x06 //0110 
+#define EVENT_START_LONG  0x07 //0111 relevant
+
+// alternative button actions: bit 0 (SHORT=0; LONG=1) , bit 1 (0=END; 1=START) 
+#define ACT_END_SHORT   Ox00 // 00
+#define ACT_END_LONG    Ox01 // 01
+#define ACT_START_SHORT Ox02 // 10
+#define ACT_START_LONG  Ox03 // 11
 
 
 #define INHIBIT_JOINT 200     //delay to become a genuine short press, not possible to do joint anymore
