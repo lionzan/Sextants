@@ -38,17 +38,13 @@ U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_MIRROR, 5, 4);
 #define BUTT_JOINT   0x03 // 11
 
 // buttons status
-#define ST_RELEASED   0x00
-#define ST_PRESSED    0x01
-#define ST_ACTIVE     0x02
-#define ST_LONGPRESS  0x03
+#define ST_RELEASED   0x00 // 00
+#define ST_PRESSED    0x01 // 01
+#define ST_ACTIVE     0x02 // 10
+#define ST_LONGPRESS  0x03 // 11
 #define ST_INHIBITED  0xFF
 
-// event byte structure
-// button - isStart - status
-// 0000     0         000
-
-// button actions
+// button actions: bits 8-5 button, bit 4 isStart, bits 3-1 startus
 #define EVENT_END_PRESS   0x01 //0001 relevant
 #define EVENT_END_SHORT   0x02 //0010 relevant and same action as END_PRESS
 #define EVENT_END_LONG    0x03 //0011 relevant
@@ -281,7 +277,8 @@ byte checkEvent() {
         }
       } else if (justReleased[i]==1) {
         if  (buttStatus[i]!=ST_INHIBITED) {
-          event = ((byte)i << 4) + ((byte)buttStatus[i]);
+          event = ((byte)i << 4) + ((byte)buttStatus[i]); //REPLACE with new ACTION statuses
+//          event = ((byte)i << 4) + (((byte)buttStatus[i]) & ((byte)buttStatus[i] >> 1) & 0x01); // with new ACTION statuses
           if (i==BUTT_UP) {
             buttStatus[BUTT_DOWN]=ST_RELEASED;
           } else if (i==BUTT_DOWN) {
@@ -297,11 +294,11 @@ byte checkEvent() {
     if ((millis()-pressedSince[i]>LONG_START) && buttStatus[i]==ST_ACTIVE) {
       buttStatus[i] = ST_LONGPRESS;
       event = ((byte)i << 4) + ((byte)buttStatus[i]) + 4;
-//      event = 0x10 * i + EVENT_START_LONG;
+//      event = ((byte)i << 4) + (((byte)buttStatus[i]) & ((byte)buttStatus[i] >> 1) & 0x01) + 0x02; // with new ACTION statuses
     } else if ((millis()-pressedSince[i]>INHIBIT_JOINT) && (buttStatus[i]==ST_PRESSED)) {
-      buttStatus[i]=ST_ACTIVE;
+      buttStatus[i] = ST_ACTIVE;
       event = ((byte)i << 4) + ((byte)buttStatus[i]) + 4;
-//      event = 0x10 * i + EVENT_PRESS;
+//      event = ((byte)i << 4) + (((byte)buttStatus[i]) & ((byte)buttStatus[i] >> 1) & 0x01) + 0x02; // with new ACTION statuses
       switch (i) {
         case BUTT_UP :{
           buttStatus[BUTT_JOINT] = ST_INHIBITED;
