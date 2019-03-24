@@ -10,10 +10,14 @@
  * connect the buzzer between buzzer pin and ground
  * 
  **********************************************/
+#include <Arduino.h> //needed ???
 #include <Wire.h>
 #include <ds3231.h>
+#include <U8g2lib.h> // U8glib - Version: 1.19.1
 
 ts t; //ts is a struct findable in ds3231.h
+
+U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_MIRROR, 5, 4);
 
 // modes
 #define M_STARFINDER 0x00
@@ -57,6 +61,12 @@ ts t; //ts is a struct findable in ds3231.h
 #define MAXINT 4294967295 // the max value of an int after which millis rolls over
 
 byte mode = 0x00;
+// define modes names
+char m00[]="Starfinder";
+char m01[]="Take Sight";
+char m02[]="Fix Position";
+char m03[]="Setup";
+char* modes [] = { m00, m01, m02, m03 };
 
 //define the buttons
 byte buttons[] = {4, 5, 6}; // button pins
@@ -67,8 +77,7 @@ byte justPressed[NUMBUTTONS], justReleased[NUMBUTTONS];
 byte buttStatus[NUMBUTTONS] = {ST_RELEASED,ST_RELEASED,ST_RELEASED,ST_RELEASED};
 unsigned long pressedSince[NUMBUTTONS] = {0,0,0,0};
 
-//define action table. Each action has 2 components: switch to mode (3 bytes) and perform procedure (5 bytes)
-
+//define action table. Each action has 2 components: switch to mode (3 upper bytes) and perform procedure (5 lowefr bytes)
 byte action[4][4][8] = {
   { // current mode M_STARFINDER
     { // button CONFIRM
@@ -155,6 +164,17 @@ void setup() {
     digitalWrite(buttons[i], HIGH);
     pinMode(BUZZPIN, OUTPUT); // Set buzzer - pin 9 as an output
   }
+//// assign default color value and font
+//  u8g2.setColorIndex(1);         // pixel on
+//  u8g.setFont(u8g_font_04b_03);
+//  u8g2.setFont(u8g2_font_profont10);
+//  u8g2.setRot270();
+//  u8g2.setFontPosBottom(); 
+//  u8g2_InitDisplay(&u8g2); // send init sequence to the display, display is in sleep mode after this,
+//  u8g2_SetPowerSave(&u8g2, 0); // wake up display  u8g2.begin();
+  u8g2.begin();
+  u8g2.setFont(u8g2_font_5x7_mr);
+  u8g2.setFontDirection(1);
 }
 
 void loop() {
@@ -162,6 +182,13 @@ void loop() {
   byte button;
   byte act;
   int freq = BUZZHIGH;
+
+  // update screen
+  u8g2.firstPage();  
+  do {
+    draw();
+  } while( u8g2.nextPage() );
+
   event = checkEvent();
   if (event!=0xFF) {
     Serial.print("Event : ");
@@ -189,35 +216,6 @@ void loop() {
     Serial.print (" New mode:");
     Serial.println (act>>5,HEX);
     if (act!=0xFF) {    mode = act>>5; }
-
-/*    switch (mode | button | action) {
-      case (M_STARFINDER | BUTT_JOINT | EVENT_END_LONG) : {
-        mode = M_SETUP;
-        break;
-      }
-      case (M_TAKE_SIGHT | BUTT_JOINT | EVENT_END_LONG) : {
-        mode = M_SETUP;
-        break;
-      }
-      case (M_POS_FIX | BUTT_JOINT | EVENT_END_LONG) : {
-        mode = M_SETUP;
-        break;
-      }
-    }
-    switch (action) {
-      case EVENT_END_PRESS : {
-        buzz (freq,100);
-        break;
-      }
-      case EVENT_START_SHORT : {
-        buzz (freq,100);
-        break;
-      }
-      case EVENT_START_LONG : {
-        buzz (freq,400);
-        break;
-      }
-    }*/
   }
 }
  
@@ -319,4 +317,41 @@ void buzz (int freq, int len) {
   tone(BUZZPIN, freq);
   delay(len);
   noTone(BUZZPIN);
+}
+
+void draw () {
+  char buff[0xFF];
+// modes to be implemented
+
+// write mode name
+  u8g2.drawStr(0, 32 - u8g2.getStrWidth(modes[mode])/2, modes[mode]);
+
+  // display current time
+  DS3231_get(&t);
+  snprintf(buff, 0xFF, "%02d:%02d:%02d", t.hour, t.min, t.sec);
+  u8g2.drawStr(10, 0, buff);
+// draw compass needle
+//  u8g.drawLine(xa,ya,xa+xy,ya+yy);
+// draw horizon
+//  u8g.drawLine(xb-xr,yb-yr+zr,xb+xr,yb+yr+zr);
+// write elevation and azimuth
+//  u8g.setFontPosBottom(); 
+//  dtostrf(dazi, 6, 2, show);
+//  u8g.drawStr( 64 - u8g.getStrWidth(show), 127, show);
+//  dtostrf(dele, 6, 2, show);
+//  u8g.drawStr( 0, 127, show);
+// write star name
+//  u8g.setFontPosTop(); 
+//  u8g.drawStr(xa - u8g.getStrWidth(starName)/2, 0, starName);
+}
+
+void setTime() {
+/*  t.sec = inp2toi(cmd, 1);
+  t.min = inp2toi(cmd, 3);
+  t.hour = inp2toi(cmd, 5);
+  t.wday = cmd[7] - 48;
+  t.mday = inp2toi(cmd, 8);
+  t.mon = inp2toi(cmd, 10);
+  t.year = inp2toi(cmd, 12) * 100 + inp2toi(cmd, 14);
+  DS3231_set(t); */
 }
