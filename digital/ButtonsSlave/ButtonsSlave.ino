@@ -1,19 +1,19 @@
 /**********************************************
  *
  * Buttons Slave module of Sextant
- * 
+ *
  * 17 March 2019
- * 
+ *
  * @lionzan
- * 
+ *
  * connect buttons between button pins and to ground
  * connect the buzzer between buzzer pin and ground
- * 
+ *
  **********************************************/
 #include <Arduino.h> //needed ???
 #include <Wire.h>
 #include <ds3231.h>
-#include <U8g2lib.h> // U8glib - Version: 1.19.1
+#include <u8g2.h> // U8glib - Version: 1.19.1
 
 ts t; //ts is a struct findable in ds3231.h
 
@@ -37,6 +37,11 @@ U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_MIRROR, 5, 4);
 #define BUTT_UP      0x02 // 10
 #define BUTT_JOINT   0x03 // 11
 
+// buttons ports
+#define BUTT_GPIO_CONFIRM GPIO_NUM_15 // was 3
+#define BUTT_GPIO_DOWN    GPIO_NUM_2  // was 4
+#define BUTT_GPIO_UP      GPIO_NUM_4  // was 5
+
 // buttons status
 #define ST_RELEASED   0x00 // 00
 #define ST_PRESSED    0x01 // 01
@@ -53,10 +58,10 @@ U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_MIRROR, 5, 4);
 #define EVENT_END_PRESS   0x01 //0001 relevant
 #define EVENT_END_SHORT   0x02 //0010 relevant and same action as END_PRESS
 #define EVENT_END_LONG    0x03 //0011 relevant
-#define EVENT_START_SHORT 0x06 //0110 
+#define EVENT_START_SHORT 0x06 //0110
 #define EVENT_START_LONG  0x07 //0111 relevant
 
-// alternative button actions: bit 1 (SHORT=0; LONG=1) , bit 0 (0=START; 1=END) 
+// alternative button actions: bit 1 (SHORT=0; LONG=1) , bit 0 (0=START; 1=END)
 #define ACT_SHORT       0x00 // 00
 #define ACT_START_LONG  0x01 // 01
 #define ACT_END_LONG    0x02 // 10
@@ -70,7 +75,7 @@ char m03[]="Setup";
 char* modes [] = { m00, m01, m02, m03 };
 
 //define the buttons
-byte buttons[] = {4, 5, 6}; // button pins
+byte buttons[] = {BUTT_GPIO_CONFIRM, BUTT_GPIO_DOWN, BUTT_GPIO_CONFIRM}; // button pins
 
 //track if a button is just pressed, just released, or 'currently pressed'
 byte pressed[NUMBUTTONS], oldPressed[NUMBUTTONS];
@@ -128,8 +133,8 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
   { // current mode M_STARFINDER - find stars and sets star for Sight Taking
     { // button CONFIRM
       (M_TAKE_SIGHT << 5), // PRESS      - switch to M_TAKE_SIGHT with selected star
-      0xFF, // START_LONG - AVAILABLE
-      0xFF  // END_LONG   - AVAILABLE
+      0xFF, // START_LONG - nil
+      (M_POS_FIX << 5)  // END_LONG   - switch to M_POS_FIX
     },
     { // button pressed UP
       0xFF, // SHORT       - scroll aross stars or increase n. of stars in list
@@ -164,9 +169,9 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
       0xFF  // END_LONG   - stop increasing reading fast
     },
     { // button pressed JOINT
-      0xFF, // SHORT      - swap Elevation/Azimuth 
+      0xFF, // SHORT      - swap Elevation/Azimuth/Star
       0xFF, // START_LONG - nil
-      (M_STARFINDER << 5) // END_LONG   - ? exit without changes, switch to Starfinder mode ?
+      (M_STARFINDER << 5) // END_LONG   - exit without changes, switch to Starfinder mode (to find another star)
     }
   },
   { // current mode M_POS_FIX
@@ -178,16 +183,16 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
     { // button pressed UP
       0xFF, // PRESS      - scroll across results
       0xFF, // START_LONG - scroll fast through results
-      0xFF  // END_LONG   - stop scrolling through results 
+      0xFF  // END_LONG   - stop scrolling through results
     },
     { // button pressed DOWN
       0xFF, // PRESS      - scroll across results
       0xFF, // START_LONG - scroll fast through results
-      0xFF  // END_LONG   - stop scrolling through results 
+      0xFF  // END_LONG   - stop scrolling through results
     },
     { // button pressed JOINT
-      0xFF, // PRESS      - 
-      0xFF, // START_LONG - 
+      0xFF, // PRESS      -
+      0xFF, // START_LONG -
       (M_SETUP << 5) // END_LONG   - switch to SETUP
     }
   },
@@ -195,17 +200,17 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
     { // button CONFIRM
       0xFF, // PRESS      - confirm and switch to next item in group
       0xFF, // START_LONG - nil
-      0xFF  // END_LONG   - switch to last Setup screen to Confirm or Cancel 
+      0xFF  // END_LONG   - switch to last Setup screen to Confirm or Cancel
     },
     { // button pressed UP
       0xFF, // PRESS      - increase value or scroll to next group
-      0xFF, // START_LONG - start fast increase value 
+      0xFF, // START_LONG - start fast increase value
       0xFF  // END_LONG   - stop fast increase value or scroll to next group
     },
     { // button pressed DOWN
       0xFF, // PRESS      - decrease value or scroll to previus group
       0xFF, // START_LONG - start fast decrease value
-      0xFF  // END_LONG   - stop fast decrease value or scroll to previous group 
+      0xFF  // END_LONG   - stop fast decrease value or scroll to previous group
     },
     { // button pressed JOINT
       0xFF, // PRESS      - AVAILABLE
@@ -217,7 +222,7 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
 
 /*
  * setup groups:
- * 
+ *
  * function byte setup (byte *byt1, char *sep1, byte *byt2, char *sep2, byte *byt3, char *sep3, char chr4[], bool OKactive) {} // return prev or next
  * example next = setup(0x00, 0x00, &latDeg, "º", &latMin, "'", {"E", "W"}, false)
  * layout: 3 numerical (with up to 1 decimal), up to 1 alphanum, up to 1 OK/canc, 1 scroll prev/next
@@ -228,7 +233,7 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
  * w3   w3   w3   w2   w4    w4
  * Group
  * - Variables
- * 
+ *
  * Take Horizon Elevation (graphically against real)
  * - degrees 00º w3
  * - minutes 00' w3
@@ -263,7 +268,7 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
  * Setup Confirm
  * - Confirm all and Exit
  * - Cancel all and Exit
- * 
+ *
  */
 
 void setup() {
@@ -283,7 +288,7 @@ void setup() {
 //  u8g.setFont(u8g_font_04b_03);
 //  u8g2.setFont(u8g2_font_profont10);
 //  u8g2.setRot270();
-//  u8g2.setFontPosBottom(); 
+//  u8g2.setFontPosBottom();
 //  u8g2_InitDisplay(&u8g2); // send init sequence to the display, display is in sleep mode after this,
 //  u8g2_SetPowerSave(&u8g2, 0); // wake up display  u8g2.begin();
   u8g2.begin();
@@ -300,7 +305,7 @@ void loop() {
 
   Serial.println("start loop");
   // update screen
-  u8g2.firstPage();  
+  u8g2.firstPage();
   do {
     draw();
   } while( u8g2.nextPage() );
@@ -309,7 +314,7 @@ void loop() {
   Serial.println(event);
   if (false) { // was: if (event!=0xFF) {
     Serial.print("Event : ");
-    Serial.print(event,BIN);    
+    Serial.print(event,BIN);
     DS3231_get(&t); //get the value and pass to the function the pointer to t, that make an lower memory fingerprint and faster execution than use return
   #ifdef CONFIG_UNIXTIME
     Serial.print(" Timestamp : ");
@@ -320,8 +325,8 @@ void loop() {
       freq = BUZZLOW;
     }
     Serial.print("Button : ");
-    Serial.println(button);    
-    act = action[(byte)mode][(byte)event>>4][((byte)event & 0x03)];  
+    Serial.println(button);
+    act = action[(byte)mode][(byte)event>>4][((byte)event & 0x03)];
     Serial.print ("Mode:");
     Serial.print(mode);
     Serial.print (" Button:");
@@ -335,7 +340,7 @@ void loop() {
     if (act!=0xFF) {    mode = act>>5; }
   }
 }
- 
+
 bool checkSwitches() {
   bool event = false;
   static byte previousState[NUMBUTTONS];
@@ -348,7 +353,7 @@ bool checkSwitches() {
   }
   if ((lastTime + DEBOUNCE) > millis()) {
     // not enough time has passed to debounce
-    return event; 
+    return event;
   }
   // ok we have waited DEBOUNCE milliseconds, lets reset the timer
   lastTime = millis();
@@ -371,13 +376,13 @@ bool checkSwitches() {
         event=true;
       }
       pressed[index] = !currentState[index];  //remember, digital HIGH means NOT pressed
-    } 
+    }
     previousState[index] = currentState[index]; //keep a running tally of the buttons
   }
   return event;
 }
 
-byte checkEvent() {  
+byte checkEvent() {
   // update needed: respond to multiple events happening in the same cycle
   Serial.println("enter checkEvent");
   byte event = 0xFF;
@@ -393,7 +398,7 @@ byte checkEvent() {
         }
       } else if (justReleased[i]==1) {
         if (buttStatus[i]!=ST_INHIBITED) {
-//          event = ((byte)i << 4) + ((byte)buttStatus[i]); 
+//          event = ((byte)i << 4) + ((byte)buttStatus[i]);
           if (buttStatus[i]!=ST_ACTIVE) { // because ST_ACTIVE has already returned ACT_SHORT
             event = ((byte)i << 4) + (((byte)buttStatus[i]) & 0x02); // ACT_SHORT or ACT_END_LONG
             Serial.println();
@@ -412,7 +417,7 @@ byte checkEvent() {
         buttStatus[i]=ST_RELEASED;
       }
     }
-  }  
+  }
   // check status function of time
   for (int i=BUTT_JOINT; i>=BUTT_CONFIRM; i--) {
     if ((millis()-pressedSince[i]>LONG_START) && buttStatus[i]==ST_ACTIVE) {
@@ -436,7 +441,7 @@ byte checkEvent() {
         }
       }
     }
-  } 
+  }
   Serial.println("exit checkEvent");
   return event;
 }
@@ -463,13 +468,13 @@ void draw () {
 // draw horizon
 //  u8g.drawLine(xb-xr,yb-yr+zr,xb+xr,yb+yr+zr);
 // write elevation and azimuth
-//  u8g.setFontPosBottom(); 
+//  u8g.setFontPosBottom();
 //  dtostrf(dazi, 6, 2, show);
 //  u8g.drawStr( 64 - u8g.getStrWidth(show), 127, show);
 //  dtostrf(dele, 6, 2, show);
 //  u8g.drawStr( 0, 127, show);
 // write star name
-//  u8g.setFontPosTop(); 
+//  u8g.setFontPosTop();
 //  u8g.drawStr(xa - u8g.getStrWidth(starName)/2, 0, starName);
 }
 
