@@ -82,7 +82,7 @@ OLEDDisplayUi ui ( &display );
 #define LONG_START    500     //delay to become a long press
 #define MAXINT 4294967295 // the max value of an int after which millis rolls over
 
-// button actions: bits 8-5 button, bit 4 isStart, bits 3-1 startus
+// button actions: bits 8-5 button, bit 4 isStart, bits 3-1 status
 #define EVENT_END_PRESS   0x01 //0001 relevant
 #define EVENT_END_SHORT   0x02 //0010 relevant and same action as END_PRESS
 #define EVENT_END_LONG    0x03 //0011 relevant
@@ -158,13 +158,16 @@ float sightEle;          // sight Elevation
 float sightAzi;          // sight Azimuth
 byte sightAster;         // star index or planet index+100
 
-// action table. Each action has 2 components: switch to mode (3 upper bytes) and perform procedure (5 lowefr bytes)
-byte action[8][4][3] = {   // alternative solution with ACTION states
+/* action table. 
+Each action has 2 components: 
+switch to mode (3 upper bytes) and 
+perform procedure (5 lower bytes) */
+byte action[4][4][3] = {   // alternative solution with ACTION states
   { // current mode M_STARFINDER - find stars and sets star for Sight Taking
     { // button CONFIRM
       (M_TAKE_SIGHT << 5), // PRESS      - switch to M_TAKE_SIGHT with selected star
-      0xFF, // START_LONG - nil
-      (M_POS_FIX << 5)  // END_LONG   - switch to M_POS_FIX
+      (M_POS_FIX << 5), // START_LONG - nil
+      0xFF  // END_LONG   - switch to M_POS_FIX
     },
     { // button pressed UP
       0xFF, // SHORT       - scroll aross stars or increase n. of stars in list
@@ -178,8 +181,8 @@ byte action[8][4][3] = {   // alternative solution with ACTION states
     },
     { // button pressed JOINT
       0xFF, // SHORT       - switch between selection of stars and selection of number of stars included
-      0xFF, // START_LONG  - nil
-      (M_SETUP << 5) // END_LONG   - switch to M_SETUP
+      (M_SETUP << 5), // START_LONG -switch to SETUP
+      0xFF // END_LONG   - nil
     }
   },
   { // current mode M_TAKE_SIGHT
@@ -200,15 +203,15 @@ byte action[8][4][3] = {   // alternative solution with ACTION states
     },
     { // button pressed JOINT
       0xFF, // SHORT      - swap Elevation/Azimuth/Star
-      0xFF, // START_LONG - nil
-      (M_STARFINDER << 5) // END_LONG   - exit without changes, switch to Starfinder mode (to find another star)
+      (M_STARFINDER << 5), // START_LONG - exit without changes, switch to Starfinder mode (to find another star)
+      0xFF // END_LONG   - nil
     }
   },
   { // current mode M_POS_FIX
     { // button CONFIRM
       (M_STARFINDER << 5), // PRESS      - keep readings and switch to M_STARFINDER
-      0xFF, // START_LONG - nil
-      (M_STARFINDER << 5)  // END_LONG   - store readings, reset readings, set estimated position to current, compute and set avg. heading and speed since last reading, switch to Starfinder
+      (M_STARFINDER << 5), // START_LONG - store readings, reset readings, set estimated position to current, compute and set avg. heading and speed since last reading, switch to Starfinder
+      0xFF  // END_LONG   - nil
     },
     { // button pressed UP
       0xFF, // PRESS      - scroll across results
@@ -222,8 +225,8 @@ byte action[8][4][3] = {   // alternative solution with ACTION states
     },
     { // button pressed JOINT
       0xFF, // PRESS      -
-      0xFF, // START_LONG -
-      (M_SETUP << 5) // END_LONG   - switch to SETUP
+      (M_SETUP << 5), // START_LONG -switch to SETUP
+      0xFF // END_LONG   - nil
     }
   },
   { // current mode M_SETUP - eyeHeightSet
@@ -244,95 +247,7 @@ byte action[8][4][3] = {   // alternative solution with ACTION states
     },
     { // button pressed JOINT
       0xFF, // PRESS      - AVAILABLE
-      0xFF, // START_LONG - AVAILABLE
-      0xFF // END_LONG   - AVAILABLE
-    }
-  },
-  { // current mode M_SETUP - horizonSet
-    { // button CONFIRM
-      0xFF, // PRESS      - confirm and switch to next item in group
-      0xFF, // START_LONG - nil
-      0xFF  // END_LONG   - ...
-    },
-    { // button pressed UP
-      0xFF, // PRESS      - increase value or scroll to next group
-      0xFF, // START_LONG - start fast increase value
-      0xFF  // END_LONG   - stop fast increase value or scroll to next group
-    },
-    { // button pressed DOWN
-      0xFF, // PRESS      - decrease value or scroll to previus group
-      0xFF, // START_LONG - start fast decrease value
-      0xFF  // END_LONG   - stop fast decrease value or scroll to previous group
-    },
-    { // button pressed JOINT
-      0xFF, // PRESS      - AVAILABLE
-      0xFF, // START_LONG - AVAILABLE
-      0xFF // END_LONG   - AVAILABLE
-    }
-  },
-  { // current mode M_SETUP - latLonSet
-    { // button CONFIRM
-      0xFF, // PRESS      - confirm and switch to next item in group
-      0xFF, // START_LONG - nil
-      0xFF  // END_LONG   - ...
-    },
-    { // button pressed UP
-      0xFF, // PRESS      - increase value or scroll to next group
-      0xFF, // START_LONG - start fast increase value
-      0xFF  // END_LONG   - stop fast increase value or scroll to next group
-    },
-    { // button pressed DOWN
-      0xFF, // PRESS      - decrease value or scroll to previus group
-      0xFF, // START_LONG - start fast decrease value
-      0xFF  // END_LONG   - stop fast decrease value or scroll to previous group
-    },
-    { // button pressed JOINT
-      0xFF, // PRESS      - AVAILABLE
-      0xFF, // START_LONG - AVAILABLE
-      0xFF // END_LONG   - AVAILABLE
-    }
-  },
-  { // current mode M_SETUP - headingSpeedSet
-    { // button CONFIRM
-      0xFF, // PRESS      - confirm and switch to next item in group
-      0xFF, // START_LONG - nil
-      0xFF  // END_LONG   - ...
-    },
-    { // button pressed UP
-      0xFF, // PRESS      - increase value or scroll to next group
-      0xFF, // START_LONG - start fast increase value
-      0xFF  // END_LONG   - stop fast increase value or scroll to next group
-    },
-    { // button pressed DOWN
-      0xFF, // PRESS      - decrease value or scroll to previus group
-      0xFF, // START_LONG - start fast decrease value
-      0xFF  // END_LONG   - stop fast decrease value or scroll to previous group
-    },
-    { // button pressed JOINT
-      0xFF, // PRESS      - AVAILABLE
-      0xFF, // START_LONG - AVAILABLE
-      0xFF // END_LONG   - AVAILABLE
-    }
-  },
-  { // current mode M_SETUP - timeGMTSet
-    { // button CONFIRM
-      0xFF, // PRESS      - confirm and switch to next item in group
-      0xFF, // START_LONG - nil
-      0xFF  // END_LONG   - ...
-    },
-    { // button pressed UP
-      0xFF, // PRESS      - increase value or scroll to next group
-      0xFF, // START_LONG - start fast increase value
-      0xFF  // END_LONG   - stop fast increase value or scroll to next group
-    },
-    { // button pressed DOWN
-      0xFF, // PRESS      - decrease value or scroll to previus group
-      0xFF, // START_LONG - start fast decrease value
-      0xFF  // END_LONG   - stop fast decrease value or scroll to previous group
-    },
-    { // button pressed JOINT
-      0xFF, // PRESS      - AVAILABLE
-      0xFF, // START_LONG - AVAILABLE
+      (M_STARFINDER << 5), // START_LONG - AVAILABLE
       0xFF // END_LONG   - AVAILABLE
     }
   }
@@ -799,16 +714,16 @@ byte checkEvent() {
         }
       } else if (justReleased[i]==1) {
         if (buttStatus[i]!=ST_INHIBITED) {
-//          event = ((byte)i << 4) + ((byte)buttStatus[i]);
-          if (buttStatus[i]!=ST_ACTIVE) { // because ST_ACTIVE has already returned ACT_SHORT
-            event = ((byte)i << 4) + (((byte)buttStatus[i]) & 0x02); // ACT_SHORT or ACT_END_LONG
+//          if (buttStatus[i]!=ST_ACTIVE) { // because ST_ACTIVE has already returned ACT_SHORT
+//            event = ((byte)i << 4) + (((byte)buttStatus[i]) & 0x02); // ACT_SHORT or ACT_END_LONG
+            event = ((byte)i << 4) + 2*(((byte)buttStatus[i]) == ST_LONGPRESS); // ACT_SHORT or ACT_END_LONG
             Serial.println();
             Serial.print("justReleased button ");
             Serial.print(i);
             Serial.print(" - Status ");
             Serial.println(buttStatus[i]);
             Serial.println();
-          }
+//          }
           if (i==BUTT_UP) {
             buttStatus[BUTT_DOWN]=ST_RELEASED;
           } else if (i==BUTT_DOWN) {
@@ -823,12 +738,10 @@ byte checkEvent() {
   for (int i=BUTT_JOINT; i>=BUTT_CONFIRM; i--) {
     if ((millis()-pressedSince[i]>LONG_START) && buttStatus[i]==ST_ACTIVE) {
       buttStatus[i] = ST_LONGPRESS;
-//      event = ((byte)i << 4) + ((byte)buttStatus[i]) + 4;
       event = ((byte)i << 4) + ACT_START_LONG; // with new ACTION states
     } else if ((millis()-pressedSince[i]>INHIBIT_JOINT) && (buttStatus[i]==ST_PRESSED)) {
       buttStatus[i] = ST_ACTIVE;
-//      event = ((byte)i << 4) + ((byte)buttStatus[i]) + 4;
-      event = ((byte)i << 4) + ACT_SHORT; // with new ACTION states
+//      event = ((byte)i << 4) + ACT_SHORT;
       switch (i) {
         case BUTT_UP :{
           buttStatus[BUTT_JOINT] = ST_INHIBITED;
@@ -855,10 +768,7 @@ void buzz (int freq, int len) {
 
 
 // This array keeps function pointers to all frames
-// frames are the single views that slide in
 FrameCallback frames[] = { starfinderFrame, takeSightFrame, positionFixFrame, eyeHeightSetFrame, horizonSetFrame, latLonSetFrame, headingSpeedSetFrame, timeGMTSetFrame };
-
-// how many frames are there?
 int frameCount = 8;
 
 // Overlays are statically drawn on top of a frame eg. a clock
@@ -945,7 +855,7 @@ void loop() {
 
   if (remainingTimeBudget > 0) {
     
-    if (millis()-millisNow > 3000) {
+/*    if (millis()-millisNow > 3000) {
       millisNow=millis();
       if (selectPerFrame[frame] == 0) {
         select = 0;
@@ -958,37 +868,38 @@ void loop() {
       ui.switchToFrame(frame);
       if (select == 0) {selBar=!selBar;}
     }
-
-  event = checkEvent();
-//  Serial.println(event);
-  if (event!=0xFF) {
-    Serial.print("Event : ");
-    Serial.print(event,BIN);
-    DS3231_get(&t); //get the value and pass to the function the pointer to t, that make an lower memory fingerprint and faster execution than use return
-  #ifdef CONFIG_UNIXTIME
-    Serial.print(" Timestamp : ");
-    Serial.println(t.unixtime);
-  #endif
-    button = (event >> 4);
-    if (button == BUTT_JOINT) {
-      freq = BUZZLOW;
+*/
+    event = checkEvent();
+  //  Serial.println(event);
+    if (event!=0xFF) {
+      Serial.print("Event : ");
+      Serial.print(event,BIN);
+      DS3231_get(&t); //get the value and pass to the function the pointer to t, that make an lower memory fingerprint and faster execution than use return
+    #ifdef CONFIG_UNIXTIME
+      Serial.print(" Timestamp : ");
+      Serial.println(t.unixtime);
+    #endif
+      button = (event >> 4);
+      if (button == BUTT_JOINT) {
+        freq = BUZZLOW;
+      }
+      Serial.print("Button : ");
+      Serial.println(button);
+      act = action[(byte)mode][(byte)event>>4][((byte)event & 0x03)];
+      Serial.print ("Mode:");
+      Serial.print(mode);
+      Serial.print (" Button:");
+      Serial.print (event>>4,HEX);
+      Serial.print (" Action:");
+      Serial.print ((event&0x03),HEX);
+      Serial.print (" Action:");
+      Serial.print (act,BIN);
+      Serial.print (" New mode:");
+      Serial.println (act>>5,HEX);
+      if (act!=0xFF) {    mode = act>>5; }
     }
-    Serial.print("Button : ");
-    Serial.println(button);
-    act = action[(byte)mode][(byte)event>>4][((byte)event & 0x03)];
-    Serial.print ("Mode:");
-    Serial.print(mode);
-    Serial.print (" Button:");
-    Serial.print (event>>4,HEX);
-    Serial.print (" Action:");
-    Serial.print ((event&0x03),HEX);
-    Serial.print (" Action:");
-    Serial.print (act,BIN);
-    Serial.print (" New mode:");
-    Serial.println (act>>5,HEX);
-    if (act!=0xFF) {    mode = act>>5; }
-  }
-    
+    ui.switchToFrame(mode);
+      
 //    delay(remainingTimeBudget);
 
   }
