@@ -55,7 +55,7 @@ OLEDDisplayUi ui ( &display );
 
 #define NUMBUTTONS 4    // 3 physical buttons + 1 combination of 2
 #define DEBOUNCE 5      // how many ms to debounce, 5+ ms is usually plenty
-#define BUZZPIN GPIO_NUM_5       // buzzer pin
+#define BUZZPIN GPIO_NUM_15       // buzzer pin
 #define BUZZLOW 659     // 5th note of A 440Hz
 #define BUZZHIGH 880    // octave of A 440Hz
 
@@ -66,9 +66,9 @@ OLEDDisplayUi ui ( &display );
 #define BUTT_JOINT   0x03 // 11
 
 // buttons ports
-#define BUTT_GPIO_CONFIRM GPIO_NUM_15 // was 3
-#define BUTT_GPIO_DOWN    GPIO_NUM_2  // was 4
-#define BUTT_GPIO_UP      GPIO_NUM_4  // was 5
+#define BUTT_GPIO_CONFIRM GPIO_NUM_5 // was 3
+#define BUTT_GPIO_DOWN    GPIO_NUM_18  // was 4
+#define BUTT_GPIO_UP      GPIO_NUM_19  // was 5
 
 // buttons status
 #define ST_RELEASED   0x00 // 00
@@ -105,7 +105,7 @@ char m03[]="Setup";
 char* modes [] = { m00, m01, m02, m03 };
 
 //define the buttons
-byte buttons[] = {BUTT_GPIO_CONFIRM, BUTT_GPIO_DOWN, BUTT_GPIO_CONFIRM}; // button pins
+byte buttons[] = {BUTT_GPIO_CONFIRM, BUTT_GPIO_DOWN, BUTT_GPIO_UP}; // button pins
 
 //track if a button is just pressed, just released, or 'currently pressed'
 byte pressed[NUMBUTTONS], oldPressed[NUMBUTTONS];
@@ -159,7 +159,7 @@ float sightAzi;          // sight Azimuth
 byte sightAster;         // star index or planet index+100
 
 // action table. Each action has 2 components: switch to mode (3 upper bytes) and perform procedure (5 lowefr bytes)
-byte action[4][4][3] = {   // alternative solution with ACTION states
+byte action[8][4][3] = {   // alternative solution with ACTION states
   { // current mode M_STARFINDER - find stars and sets star for Sight Taking
     { // button CONFIRM
       (M_TAKE_SIGHT << 5), // PRESS      - switch to M_TAKE_SIGHT with selected star
@@ -226,11 +226,99 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
       (M_SETUP << 5) // END_LONG   - switch to SETUP
     }
   },
-  { // current mode M_SETUP
+  { // current mode M_SETUP - eyeHeightSet
     { // button CONFIRM
       0xFF, // PRESS      - confirm and switch to next item in group
       0xFF, // START_LONG - nil
-      0xFF  // END_LONG   - switch to last Setup screen to Confirm or Cancel
+      0xFF  // END_LONG   - ...
+    },
+    { // button pressed UP
+      0xFF, // PRESS      - increase value or scroll to next group
+      0xFF, // START_LONG - start fast increase value
+      0xFF  // END_LONG   - stop fast increase value or scroll to next group
+    },
+    { // button pressed DOWN
+      0xFF, // PRESS      - decrease value or scroll to previus group
+      0xFF, // START_LONG - start fast decrease value
+      0xFF  // END_LONG   - stop fast decrease value or scroll to previous group
+    },
+    { // button pressed JOINT
+      0xFF, // PRESS      - AVAILABLE
+      0xFF, // START_LONG - AVAILABLE
+      0xFF // END_LONG   - AVAILABLE
+    }
+  },
+  { // current mode M_SETUP - horizonSet
+    { // button CONFIRM
+      0xFF, // PRESS      - confirm and switch to next item in group
+      0xFF, // START_LONG - nil
+      0xFF  // END_LONG   - ...
+    },
+    { // button pressed UP
+      0xFF, // PRESS      - increase value or scroll to next group
+      0xFF, // START_LONG - start fast increase value
+      0xFF  // END_LONG   - stop fast increase value or scroll to next group
+    },
+    { // button pressed DOWN
+      0xFF, // PRESS      - decrease value or scroll to previus group
+      0xFF, // START_LONG - start fast decrease value
+      0xFF  // END_LONG   - stop fast decrease value or scroll to previous group
+    },
+    { // button pressed JOINT
+      0xFF, // PRESS      - AVAILABLE
+      0xFF, // START_LONG - AVAILABLE
+      0xFF // END_LONG   - AVAILABLE
+    }
+  },
+  { // current mode M_SETUP - latLonSet
+    { // button CONFIRM
+      0xFF, // PRESS      - confirm and switch to next item in group
+      0xFF, // START_LONG - nil
+      0xFF  // END_LONG   - ...
+    },
+    { // button pressed UP
+      0xFF, // PRESS      - increase value or scroll to next group
+      0xFF, // START_LONG - start fast increase value
+      0xFF  // END_LONG   - stop fast increase value or scroll to next group
+    },
+    { // button pressed DOWN
+      0xFF, // PRESS      - decrease value or scroll to previus group
+      0xFF, // START_LONG - start fast decrease value
+      0xFF  // END_LONG   - stop fast decrease value or scroll to previous group
+    },
+    { // button pressed JOINT
+      0xFF, // PRESS      - AVAILABLE
+      0xFF, // START_LONG - AVAILABLE
+      0xFF // END_LONG   - AVAILABLE
+    }
+  },
+  { // current mode M_SETUP - headingSpeedSet
+    { // button CONFIRM
+      0xFF, // PRESS      - confirm and switch to next item in group
+      0xFF, // START_LONG - nil
+      0xFF  // END_LONG   - ...
+    },
+    { // button pressed UP
+      0xFF, // PRESS      - increase value or scroll to next group
+      0xFF, // START_LONG - start fast increase value
+      0xFF  // END_LONG   - stop fast increase value or scroll to next group
+    },
+    { // button pressed DOWN
+      0xFF, // PRESS      - decrease value or scroll to previus group
+      0xFF, // START_LONG - start fast decrease value
+      0xFF  // END_LONG   - stop fast decrease value or scroll to previous group
+    },
+    { // button pressed JOINT
+      0xFF, // PRESS      - AVAILABLE
+      0xFF, // START_LONG - AVAILABLE
+      0xFF // END_LONG   - AVAILABLE
+    }
+  },
+  { // current mode M_SETUP - timeGMTSet
+    { // button CONFIRM
+      0xFF, // PRESS      - confirm and switch to next item in group
+      0xFF, // START_LONG - nil
+      0xFF  // END_LONG   - ...
     },
     { // button pressed UP
       0xFF, // PRESS      - increase value or scroll to next group
@@ -555,15 +643,15 @@ void eyeHeightSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t 
   if (select!=0) {drawButton (display, 32+32*(select-1), centerY, iconUp, iconDown);}
 }
 
-void zeroSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
+void horizonSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
   drawScrollBar(display, 1, 5, (select==0));
   display->setFont(Dialog_plain_8);
   //mode
   display->setTextAlignment(TEXT_ALIGN_LEFT);
-  display->drawString(8 , 0, "Zero Set" );
+  display->drawString(8 , 0, "Horizon Set" );
   // comment
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
-  display->drawString(screenW , 0, "Align Horizon" );
+  display->drawString(screenW , 0, "Line = Horizon" );
   //azimuth/elevation
   display->fillCircle(centerX-4,screenH-3,2);
   display->drawCircle(centerX+4,screenH-3,2);
@@ -768,7 +856,7 @@ void buzz (int freq, int len) {
 
 // This array keeps function pointers to all frames
 // frames are the single views that slide in
-FrameCallback frames[] = { starfinderFrame, takeSightFrame, positionFixFrame, eyeHeightSetFrame, zeroSetFrame, latLonSetFrame, headingSpeedSetFrame, timeGMTSetFrame };
+FrameCallback frames[] = { starfinderFrame, takeSightFrame, positionFixFrame, eyeHeightSetFrame, horizonSetFrame, latLonSetFrame, headingSpeedSetFrame, timeGMTSetFrame };
 
 // how many frames are there?
 int frameCount = 8;
@@ -783,11 +871,11 @@ void setup() {
   Wire.begin(); //start i2c (required for connection)
   DS3231_init(DS3231_INTCN); //register the ds3231 (DS3231_INTCN is the default address of ds3231, this is set by macro for no performance loss)
   // Make input & enable pull-up resistors on switch pins
-  for (byte i=0; i< NUMBUTTONS; i++) {
+  for (byte i=0; i< NUMBUTTONS-1; i++) {
     pinMode(buttons[i], INPUT);
-    digitalWrite(buttons[i], HIGH);
-    pinMode(BUZZPIN, OUTPUT); // Set buzzer - pin 9 as an output
+    pinMode(buttons[i], INPUT_PULLUP);
   }
+  pinMode(BUZZPIN, OUTPUT); // Set buzzer - pin 9 as an output
 
 	// The ESP is capable of rendering 60fps in 80Mhz mode
 	// but that won't give you much time for anything else
