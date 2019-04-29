@@ -94,6 +94,9 @@ OLEDDisplayUi ui ( &display );
 #define ACT_START_LONG  0x01 // 01
 #define ACT_END_LONG    0x02 // 10
 
+typedef void (*actionFunction)();
+actionFunction* actionFunctions;
+
 ts t; //ts is a struct findable in ds3231.h
 
 byte mode = 0x00;
@@ -114,15 +117,32 @@ byte buttStatus[NUMBUTTONS] = {ST_RELEASED,ST_RELEASED,ST_RELEASED,ST_RELEASED};
 unsigned long pressedSince[NUMBUTTONS] = {0,0,0,0};
 
 // main variables
-byte horizonElev[2];     //deg, min
-byte horizonTilt[2];     //deg, min
-byte eyeHeight[2];       //m, cm
-byte posLat[3];          //deg, min, sign{W,E}
-byte posLon[3];          //deg, min, sign{N,S}
-byte heading[1];         //deg
-byte speedKn[2];         //kn, tens of knot
-long timeNow;            //time now from J2000
-byte timeGMT[3];         //hr, min, sec for visualisation
+float horizonElev;     //
+float horizonTilt;     //
+float eyeHeight;       //
+float posLat;          //
+float posLon;          //
+float heading;         //
+float speedKn;         //
+float timeNow;            //time now from J2000
+// edit variables
+int editHorizonElev;   //in hunderds of degree
+int editHorizonTilt;   //hundreds of degree
+int editEyeHeight;     //decimeters
+int editPosLatLat;     //in degrees
+int editPosLatMin;     //in prime minutes
+int editPosLatNS;      //N | S
+int editPosLonLat;     //in degrees
+int editPosLonMin;     //in prime minutes
+int editPosLonEW;      //E | W
+int editHeading;       //in degrees
+int editSpeedKn;       //in tenths of Knot
+int editTimeY;
+int editTimeM;
+int editTimeD;
+int editTimeh;
+int editTimem;
+int editTimes;
 
 // stars data (fixed, could stay in EEPROM)
 float starSHA[100];      //up to 100 stars SHA
@@ -166,8 +186,8 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
   { // current mode M_STARFINDER - find stars and sets star for Sight Taking
     { // button CONFIRM
       (M_TAKE_SIGHT << 5), // PRESS      - switch to M_TAKE_SIGHT with selected star
-      (M_POS_FIX << 5), // START_LONG - nil
-      0xFF  // END_LONG   - switch to M_POS_FIX
+      (M_POS_FIX << 5), // START_LONG - switch to M_POS_FIX
+      0xFF  // END_LONG   - nil
     },
     { // button pressed UP
       0xFF, // SHORT       - scroll aross stars or increase n. of stars in list
@@ -193,13 +213,13 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
     },
     { // button pressed UP
       0xFF, // SHORT      - increase reading stepwise and update crosshatch
-      0xFF, // START_LONG - start increasing reading fast
-      0xFF  // END_LONG   - stop increasing reading fast
+      0xFF, // START_LONG - start increase reading fast
+      0xFF  // END_LONG   - stop increase reading fast
     },
     { // button pressed DOWN
       0xFF, // SHORT      - decrease reading stepwise and update crosshatch
-      0xFF, // START_LONG - start increasing reading fast
-      0xFF  // END_LONG   - stop increasing reading fast
+      0xFF, // START_LONG - start increase reading fast
+      0xFF  // END_LONG   - stop increase reading fast
     },
     { // button pressed JOINT
       0xFF, // SHORT      - swap Elevation/Azimuth/Star
@@ -231,9 +251,9 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
   },
   { // current mode M_SETUP - eyeHeightSet
     { // button CONFIRM
-      0xFF, // PRESS      - confirm and switch to next item in group
+      0xFF, // PRESS      - switch to next item in group
       0xFF, // START_LONG - nil
-      0xFF  // END_LONG   - ...
+      0xFF  // END_LONG   - nil
     },
     { // button pressed UP
       0xFF, // PRESS      - increase value or scroll to next group
@@ -247,7 +267,7 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
     },
     { // button pressed JOINT
       0xFF, // PRESS      - AVAILABLE
-      (M_STARFINDER << 5), // START_LONG - AVAILABLE
+      (M_STARFINDER << 5), // START_LONG - switch back to STARFINDER
       0xFF // END_LONG   - AVAILABLE
     }
   }
@@ -261,7 +281,10 @@ int centerY = screenH/2;
 
 int frame = 0;
 int select = 0;
-int selectPerFrame [] = {0,0,0,3,0,8,4,8};
+int selectInFrame = 0;
+int selectPerFrame [] = {0,0,0,2,0,7,3,7};
+byte* selectVariablesFrame3 [] = {};  
+int setupFrame = 0; //number of Frame within SETUP
 int millisNow = millis();
 boolean selBar = false;
 
@@ -554,7 +577,7 @@ void eyeHeightSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t 
   display->drawString(screenW , 0, "Estimate" );
   //buttons
   drawData (display, 32, centerY, "Eye Height", "5.2m");
-  drawData (display, 64, centerY, "", "OK");
+//  drawData (display, 64, centerY, "", "OK");
   if (select!=0) {drawButton (display, 32+32*(select-1), centerY, iconUp, iconDown);}
 }
 
@@ -604,7 +627,7 @@ void latLonSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, 
   drawData (display, 64, centerY, "Lon.", "05º");
   drawData (display, 80, centerY, "", "12'");
   drawData (display, 96, centerY, "", "E");
-  drawData (display, 112, centerY, "", "OK");
+//  drawData (display, 112, centerY, "", "OK");
   if (select!=0) {drawButton (display, 16+16*(select-1), centerY, iconUp, iconDown);}
 }
 
@@ -626,7 +649,7 @@ void headingSpeedSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16
   //buttons
   drawData (display, 32, centerY, "Heading", "215º");
   drawData (display, 64, centerY, "Speed", "4.3kt");
-  drawData (display, 96, centerY, "", "OK");
+//  drawData (display, 96, centerY, "", "OK");
   if (select!=0) {drawButton (display, 32+32*(select-1), centerY, iconUp, iconDown);}
 }
 
@@ -652,7 +675,7 @@ void timeGMTSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x,
   drawData (display, 64, centerY, "h", "13");
   drawData (display, 80, centerY, "m", "56");
   drawData (display, 96, centerY, "s", "45");
-  drawData (display, 112, centerY, "", "OK");
+//  drawData (display, 112, centerY, "", "OK");
   if (select!=0) {drawButton (display, 16+16*(select-1), centerY, iconUp, iconDown);}
 }
 
@@ -717,12 +740,6 @@ byte checkEvent() {
 //          if (buttStatus[i]!=ST_ACTIVE) { // because ST_ACTIVE has already returned ACT_SHORT
 //            event = ((byte)i << 4) + (((byte)buttStatus[i]) & 0x02); // ACT_SHORT or ACT_END_LONG
             event = ((byte)i << 4) + 2*(((byte)buttStatus[i]) == ST_LONGPRESS); // ACT_SHORT or ACT_END_LONG
-            Serial.println();
-            Serial.print("justReleased button ");
-            Serial.print(i);
-            Serial.print(" - Status ");
-            Serial.println(buttStatus[i]);
-            Serial.println();
 //          }
           if (i==BUTT_UP) {
             buttStatus[BUTT_DOWN]=ST_RELEASED;
@@ -764,6 +781,14 @@ void buzz (int freq, int len) {
 //  tone(BUZZPIN, freq);
 //  delay(len);
 //  noTone(BUZZPIN);
+}
+
+void editValue (byte mode, byte command) {
+  if (mode == 3) {
+    if (select == 0) {
+      
+    }
+  }
 }
 
 
@@ -870,39 +895,28 @@ void loop() {
     }
 */
     event = checkEvent();
-  //  Serial.println(event);
     if (event!=0xFF) {
-      Serial.print("Event : ");
-      Serial.print(event,BIN);
-      DS3231_get(&t); //get the value and pass to the function the pointer to t, that make an lower memory fingerprint and faster execution than use return
-    #ifdef CONFIG_UNIXTIME
-      Serial.print(" Timestamp : ");
-      Serial.println(t.unixtime);
-    #endif
+//      DS3231_get(&t); //get the value and pass to the function the pointer to t, that make an lower memory fingerprint and faster execution than use return
+//    #ifdef CONFIG_UNIXTIME
+//      Serial.print(" Timestamp : ");
+//      Serial.println(t.unixtime);
+//    #endif
       button = (event >> 4);
       if (button == BUTT_JOINT) {
         freq = BUZZLOW;
       }
-      Serial.print("Button : ");
-      Serial.println(button);
       act = action[(byte)mode][(byte)event>>4][((byte)event & 0x03)];
-      Serial.print ("Mode:");
-      Serial.print(mode);
-      Serial.print (" Button:");
-      Serial.print (event>>4,HEX);
-      Serial.print (" Action:");
-      Serial.print ((event&0x03),HEX);
-      Serial.print (" Action:");
-      Serial.print (act,BIN);
-      Serial.print (" New mode:");
-      Serial.println (act>>5,HEX);
-      if (act!=0xFF) {    mode = act>>5; }
+      if ( (act>>5) != 0x7 ) {
+        mode = act>>5;
+        Serial.print(mode);
+        Serial.print("-");
+        Serial.println(setupFrame);
+        if (mode!=3) { ui.switchToFrame(mode); } 
+        else { 
+          ui.switchToFrame(mode+setupFrame);
+        }
+      }
+      editValue (mode, (act & 0x1F));
     }
-    ui.switchToFrame(mode);
-      
-//    delay(remainingTimeBudget);
-
   }
-
-
 }
