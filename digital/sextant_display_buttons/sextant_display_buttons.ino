@@ -66,9 +66,9 @@ OLEDDisplayUi ui ( &display );
 #define BUTT_JOINT   0x03 // 11
 
 // buttons ports
-#define BUTT_GPIO_CONFIRM GPIO_NUM_5 // was 3
-#define BUTT_GPIO_DOWN    GPIO_NUM_18  // was 4
-#define BUTT_GPIO_UP      GPIO_NUM_19  // was 5
+#define BUTT_GPIO_CONFIRM GPIO_NUM_5 
+#define BUTT_GPIO_DOWN    GPIO_NUM_19  
+#define BUTT_GPIO_UP      GPIO_NUM_18  
 
 // buttons status
 #define ST_RELEASED   0x00 // 00
@@ -107,6 +107,13 @@ char m02[]="Fix Position";
 char m03[]="Setup";
 char* modes [] = { m00, m01, m02, m03 };
 
+String s01 = "Starfinder";
+String s02 = "Take Sight";
+String s03 = "Fix position";
+String s04 = "Setup";
+
+String strings [] = {s01, s02, s03, s04};
+
 //define the buttons
 byte buttons[] = {BUTT_GPIO_CONFIRM, BUTT_GPIO_DOWN, BUTT_GPIO_UP}; // button pins
 
@@ -116,33 +123,16 @@ byte justPressed[NUMBUTTONS], justReleased[NUMBUTTONS];
 byte buttStatus[NUMBUTTONS] = {ST_RELEASED,ST_RELEASED,ST_RELEASED,ST_RELEASED};
 unsigned long pressedSince[NUMBUTTONS] = {0,0,0,0};
 
-// main variables
-float horizonElev;     //
-float horizonTilt;     //
-float eyeHeight;       //
-float posLat;          //
-float posLon;          //
-float heading;         //
-float speedKn;         //
-float timeNow;            //time now from J2000
-// edit variables
-int editHorizonElev;   //in hunderds of degree
-int editHorizonTilt;   //hundreds of degree
-int editEyeHeight;     //decimeters
-int editPosLatLat;     //in degrees
-int editPosLatMin;     //in prime minutes
-int editPosLatNS;      //N | S
-int editPosLonLat;     //in degrees
-int editPosLonMin;     //in prime minutes
-int editPosLonEW;      //E | W
-int editHeading;       //in degrees
-int editSpeedKn;       //in tenths of Knot
-int editTimeY;
-int editTimeM;
-int editTimeD;
-int editTimeh;
-int editTimem;
-int editTimes;
+// main variables - value, min, max
+float eyeHeight[] = {1.5,0,99};     //
+float horizonElev [] = {0,-90,90};     //
+float horizonTilt[] = {0,-90,90};     //
+float posLat[] = {51.473762,-90,90};     //
+float posLon[] = {-0.224904,-180,180};     //
+float heading[] = {0,0,360};         //
+float speedKn[] = {4.0,0,20};         //
+float timeNow[] = {631152000,0,3153600000};            //time now, seconds from J2000
+float* mainVariables [] = {eyeHeight, horizonElev, horizonTilt, posLat, posLon, heading, speedKn, timeNow};
 
 // stars data (fixed, could stay in EEPROM)
 float starSHA[100];      //up to 100 stars SHA
@@ -251,19 +241,19 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
   },
   { // current mode M_SETUP - eyeHeightSet
     { // button CONFIRM
-      0xFF, // PRESS      - switch to next item in group
+      (0x7<<5)|0x01, // PRESS      - switch to next item in group
       0xFF, // START_LONG - nil
-      0xFF  // END_LONG   - nil
+      (0x7<<5)|0x01  // END_LONG   - nil
     },
     { // button pressed UP
-      0xFF, // PRESS      - increase value or scroll to next group
-      0xFF, // START_LONG - start fast increase value
-      0xFF  // END_LONG   - stop fast increase value or scroll to next group
+      (0x7<<5)|0x02, // PRESS      - increase value or scroll to next group
+      (0x7<<5)|0x03, // START_LONG - start fast increase value
+      (0x7<<5)|0x04  // END_LONG   - stop fast increase value or scroll to next group
     },
     { // button pressed DOWN
-      0xFF, // PRESS      - decrease value or scroll to previus group
-      0xFF, // START_LONG - start fast decrease value
-      0xFF  // END_LONG   - stop fast decrease value or scroll to previous group
+      (0x7<<5)|0x05, // PRESS      - decrease value or scroll to previus group
+      (0x7<<5)|0x06, // START_LONG - start fast decrease value
+      (0x7<<5)|0x07  // END_LONG   - stop fast decrease value or scroll to previous group
     },
     { // button pressed JOINT
       0xFF, // PRESS      - AVAILABLE
@@ -282,10 +272,23 @@ int centerY = screenH/2;
 int frame = 0;
 int select = 0;
 int selectInFrame = 0;
-int selectPerFrame [] = {0,0,0,2,0,7,3,7};
-byte* selectVariablesFrame3 [] = {};  
-int setupFrame = 0; //number of Frame within SETUP
+int selectPerFrame [] = {2,3,7,3,7}; // including scroll bar
+//float* mainVariables [] = {eyeHeight, horizonElev, horizonTilt, posLat, posLon, heading, speedKn, timeNow};
+//eyeHeightSetFrame, horizonSetFrame, latLonSetFrame, headingSpeedSetFrame, timeGMTSetFrame
+int varIndex;
+int varSelect [] = {-1, 0, -1, 1, 2, -1, 3,  3,  3, 4,  4,  4, -1, 5,  6, -1,  7,  7,     7,    7,  7, 7}; // variable index for each select
+int varMulti [] = {0, 10,  0, 1, 1,  0, 1, 60, -1, 1, 60, -1,  0, 1, 10,  0, -2, -1, 86400, 3600, 60, 1}; // variable multiplier for each select
+int dSign; //sign of increment
+/*
+int varSelectFrame00 [] = 
+variable[select][frame]
+factor[select][frame]
+*/
+int setupFrames = 5; // total frames in SETUP
+int setupFrame = 0; //current frame in SETUP
+int call; // function to call
 int millisNow = millis();
+int lastFastUpdate;
 boolean selBar = false;
 
 unsigned char PROGMEM buttonUp[] =
@@ -437,6 +440,32 @@ void clockOverlay(OLEDDisplay *display, OLEDDisplayUiState* state) {
 
 }
 
+void updateVariable (char* txtValues = {" "}, int16_t txtValuesCount = 0) {
+/*  
+ *   variable - pointer to the variable to update
+ *   unitFraction - fraction of integer used as unit of change e.g. 1=>units 10=>10ths of unit 60=>60th of units
+ *   dVal - step of change in unitFractions 
+ *   txtValues - list of possible text values as Strings
+ *   txtValuesCount - length of list
+ */
+  float* variable = mainVariables[varSelect[varIndex]];
+  Serial.print("varSelect[");
+  Serial.print(varIndex);
+  Serial.print("] =");
+  Serial.print(varSelect[varIndex]);
+  Serial.print("-");
+  float minV = mainVariables[varSelect[varIndex]][1];
+  float maxV = mainVariables[varSelect[varIndex]][2];
+  if (varMulti[varIndex] == -1) { // change sign
+    *variable *= -1.0;
+  } else {
+    int16_t unitFraction = varMulti[varIndex] * dSign;
+    *variable += (1.0 / unitFraction);
+    if (*variable > maxV) {*variable = *variable - maxV + minV;}
+    else if (*variable < minV) {*variable = *variable + maxV - minV;}
+  }
+  Serial.println(variable[0]);
+}
 
 void drawPointer (OLEDDisplay *display, int16_t x, int16_t y, int16_t dir, int16_t r = 10, int8_t s = 2) {
   float dirRad = DEG_TO_RAD * dir;
@@ -576,7 +605,8 @@ void eyeHeightSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t 
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
   display->drawString(screenW , 0, "Estimate" );
   //buttons
-  drawData (display, 32, centerY, "Eye Height", "5.2m");
+  
+  drawData (display, 32, centerY, "Eye Height", String(mainVariables[0][0]));
 //  drawData (display, 64, centerY, "", "OK");
   if (select!=0) {drawButton (display, 32+32*(select-1), centerY, iconUp, iconDown);}
 }
@@ -591,14 +621,17 @@ void horizonSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x,
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
   display->drawString(screenW , 0, "Line = Horizon" );
   //azimuth/elevation
-  display->fillCircle(centerX-4,screenH-3,2);
+  display->drawCircle(centerX-4,screenH-3,2);
   display->drawCircle(centerX+4,screenH-3,2);
+  if (select != 0) {
+    display->fillCircle(centerX+4*(2*select-3),screenH-3,2);    
+  }
   //azimuth measure
-  display->setTextAlignment(TEXT_ALIGN_LEFT);
-  display->drawString(8,screenH-8,"Height");
-  //elevation measure
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
-  display->drawString(screenW,screenH-8,"Tilt");
+  display->drawString(centerX-8,screenH-8,"Height");
+  //elevation measure
+  display->setTextAlignment(TEXT_ALIGN_LEFT);
+  display->drawString(centerX+8,screenH-8,"Tilt");
   //horizon line
   display->drawLine(0, centerY, screenW,  centerY);
   //azimuth line
@@ -621,8 +654,8 @@ void latLonSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, 
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
   display->drawString(screenW , 0, "Estimate" );
   //buttons
-  drawData (display, 16, centerY, "Lat.", "55º");
-  drawData (display, 32, centerY, "", "37'");
+  drawData (display, 16, centerY, "Lat.", String(int(mainVariables[3][0])));
+  drawData (display, 32, centerY, "", String(mainVariables[3][0]-int(mainVariables[3][0])));
   drawData (display, 48, centerY, "", "N");
   drawData (display, 64, centerY, "Lon.", "05º");
   drawData (display, 80, centerY, "", "12'");
@@ -906,17 +939,107 @@ void loop() {
         freq = BUZZLOW;
       }
       act = action[(byte)mode][(byte)event>>4][((byte)event & 0x03)];
+      call = act & 0x1F;
+      if (mode==M_SETUP) {
+        switch (call) {
+          case 0x01: { // CONFIRM short
+            select = (select+1) % selectInFrame;
+            varIndex = setupFrame + select;   //EDIT THIS, IT IS WRONG!!! 
+            break;
+          }
+          case 0x02: { // UP short
+            if (select == 0) { //scoll to previous setupFrame
+              setupFrame = (setupFrames + setupFrame - 1) % setupFrames;
+              selectInFrame = selectPerFrame[setupFrame];
+              ui.switchToFrame(mode+setupFrame);
+            } else { //set unit increase for select variable
+              dSign = 1;
+              updateVariable();
+              dSign = 0;
+            }
+            break;
+          }
+          case 0x03: { //UP long start
+            if (select == 0) { //scoll to previous setupFrame
+              setupFrame = (setupFrames + setupFrame - 1) % setupFrames;
+              selectInFrame = selectPerFrame[setupFrame];
+              ui.switchToFrame(mode+setupFrame);
+            } else { //set unit increase for select variable
+              dSign = 1;
+              lastFastUpdate = millis();
+            }
+            break;
+          }
+          case 0x04: { //UP long end
+            if (select == 0) { //do nothing
+            } else { //set unit increase for select variable
+              dSign = 0;
+            }
+            break;
+          }
+          case 0x05: { // DOWN short
+            if (select == 0) { //scoll to next setupFrame
+              setupFrame = (setupFrame + 1) % setupFrames;
+              selectInFrame = selectPerFrame[setupFrame];
+              ui.switchToFrame(mode+setupFrame);
+            } else { // set unit decrease for select variable
+              dSign = -1;
+              updateVariable();
+              dSign = 0;
+            }
+            break;
+          }
+          case 0x06: { //DOWN long start
+            if (select == 0) { //scoll to previous setupFrame
+              setupFrame = (setupFrames + setupFrame - 1) % setupFrames;
+              selectInFrame = selectPerFrame[setupFrame];
+              ui.switchToFrame(mode+setupFrame);
+            } else { //set unit increase for select variable
+              dSign = -1;
+              lastFastUpdate = millis();
+            }
+            break;
+          }
+          case 0x07: { //DOWN long end
+            if (select == 0) { //do nothing
+            } else { //set unit increase for select variable
+              dSign = 0;
+            }
+            break;
+          }
+        }
+      }
+      // change mode after running functions
       if ( (act>>5) != 0x7 ) {
         mode = act>>5;
-        Serial.print(mode);
-        Serial.print("-");
-        Serial.println(setupFrame);
         if (mode!=3) { ui.switchToFrame(mode); } 
         else { 
           ui.switchToFrame(mode+setupFrame);
+          selectInFrame = selectPerFrame[setupFrame];
+//          selectVariable = firstVariable [setupFrame]; //first variable in setupFrame
         }
-      }
-      editValue (mode, (act & 0x1F));
+      }       
+      Serial.print(mode);
+      Serial.print("-");
+      Serial.print(setupFrame);
+      Serial.print("-");
+      Serial.println(select);
+//      editValue (mode, (act & 0x1F));
+    }
+    // update variable
+    //  if long pressed then change by unit and 
+    if ((dSign !=0) && (millis() - lastFastUpdate > 100)) {
+      lastFastUpdate = millis();
+      updateVariable();
     }
   }
 }
+
+/*
+int frame = 0;
+int select = 0;
+int selectInFrame = 0;
+int selectPerFrame [] = {0,0,0,2,0,7,3,7};
+byte* selectVariablesFrame3 [] = {};  
+int setupFrame = 0; //number of Frame within SETUP
+*/
