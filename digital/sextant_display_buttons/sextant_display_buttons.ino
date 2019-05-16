@@ -34,6 +34,7 @@
 #include <Wire.h>  // Only needed for Arduino 1.6.5 and earlier
 #include "SSD1306Wire.h" 
 #include <ds3231.h>
+#include <EEPROM.h>
 
 // Include the UI lib
 #include "OLEDDisplayUi.h"
@@ -129,44 +130,58 @@ float horizonElev [] = {0,-90,90};     //
 float horizonTilt[] = {0,-90,90};     //
 float posLat[] = {51.473762,-90,90};     //
 float posLon[] = {-0.224904,-180,180};     //
-float heading[] = {0,0,360};         //
+float heading[] = {32.0,0,360};         //
 float speedKn[] = {4.0,0,20};         //
-float timeNow[] = {631152000,0,3153600000};            //time now, seconds from J2000
-float* mainVariables [] = {eyeHeight, horizonElev, horizonTilt, posLat, posLon, heading, speedKn, timeNow};
+uint32_t timeNow[] = {631152000,0,2147483647};            //time now, seconds from J2000 , max size in uint32, approx to 2068
+float* mainVariables [] = {eyeHeight, horizonElev, horizonTilt, posLat, posLon, heading, speedKn};
 
 // stars data (fixed, could stay in EEPROM)
-float starSHA[100];      //up to 100 stars SHA
-float starDecl[100];
-float starAppMag[100];
-byte starIdent[100];     // up to 100 poiners to char singleStarIdent[6];
-byte starName[100];      // up to 110 pointers to chars singleStarName[13];
+struct star {
+  float sha; // SHA
+  float dec; // declination
+  float ama; // apparent magnitude
+  char sid [6]; // star ID
+  String sName; // star Name
+};
+star stars[100];
 
 // planets data (fixed, could stay in EEPROM)
-float planetIncl[9];     // 9 planets Inclination (deg)
-float planetLAN[9];      // 9 planets Longitude Ascensino Node (deg)
-float planetLonPeri[9];  // 9 planets Longitude of Perihelion (deg)
-float planetMeanDist[9]; // 9 planets Mean Distance (au)
-float planetDailyMot[9]; // 9 planets Daily Motion (deg)
-float planetEccen[9];    // 9 planets Eccentricity (1)
-float planetMeanLong[9]; // 9 planets Mean Longitude (deg)
-byte planetName[9];      // 9 planets pointers to Names as char[10]
+struct planet {
+  float inc; // Inclination (deg)
+  float lan; // Longitude Ascension Node (deg)
+  float lpe; // Longitude of Perihelion (deg)
+  float mdi; // Mean Distance (au)
+  float dmo; // Daily Motion (deg)
+  float pec; // Eccentricity (1)
+  float pml; // Mean Longitude (deg)
+  char pid [6]; // planet ID
+  String pName; // Planet Name
+};
+planet planets[9];
 
 // moon data (fixed, could stay in EEPROM)
 //...
 
-// asters current position
-float starLon[100];      // up to 100 stars current longitude
-float starLat[100];      // up to 100 stars current latitude
-byte starSort[100];      // index of visible stars sorted by magnitude
-float planetLon[10];     // 9 planets + moon Longitude
-float planetLat[10];     // 9 planets + moon Latitude
+struct aster { // position of asters in sky Now
+  uint32_t tas; // time of position
+  float lon; // longitude
+  float lat; // latitude
+  int ast; // index of aster (9 planets + moon + stars)
+};
+aster asters [0]; // the currently visible asters sorted eastward (last aster in list is first West of us)
 
 // sights
-byte sights[100];        // up to 100 sights, structure int index, float(or unsigned integer? seconds) sightTime, float sightEle, float sightAzi (2+4+4+4)
-float sightTime;         // sight Time (or integer seconds from J2000?)
-float sightEle;          // sight Elevation
-float sightAzi;          // sight Azimuth
-byte sightAster;         // star index or planet index+100
+struct sight {
+  uint32_t tsi; // time of sight
+  float ele; // elevation
+  float gaz; // geographical azimuth
+  float lon; // aster longitude
+  float lat; // aster latitude
+  int ast; // index of aster
+};
+sight sights[100]; // last 100 sights
+// should be stored in EEPROM and downloaded via WiFi to computer for storage
+// or stored on file in SD card
 
 /* action table. 
 Each action has 2 components: 
@@ -180,17 +195,17 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
       0xFF  // END_LONG   - nil
     },
     { // button pressed UP
-      0xFF, // SHORT       - scroll aross stars or increase n. of stars in list
-      0xFF, // START_LONG  - start scrolling aross stars or increasing n. of stars in list
-      0xFF  // END_LONG    - finish scrolling aross stars or increasing n. of stars in list
+      0xFF, // SHORT       - scroll aross visible stars
+      0xFF, // START_LONG  - start scrolling aross stars
+      0xFF  // END_LONG    - finish scrolling aross stars
     },
     { // button pressed DOWN
-      0xFF, // SHORT       - scroll aross stars or decrease n. of stars in list
-      0xFF, // START_LONG  - start scrolling aross stars or decreasing n. of stars in list
-      0xFF  // END_LONG    - finish scrolling aross stars or decreasing n. of stars in list
+      0xFF, // SHORT       - scroll aross visible stars
+      0xFF, // START_LONG  - start scrolling aross stars
+      0xFF  // END_LONG    - finish scrolling aross stars
     },
     { // button pressed JOINT
-      0xFF, // SHORT       - switch between selection of stars and selection of number of stars included
+      0xFF, // SHORT       - select closest aster (then UP and DOWN scroll East and West in list of asters)
       (M_SETUP << 5), // START_LONG -switch to SETUP
       0xFF // END_LONG   - nil
     }
@@ -273,11 +288,12 @@ int frame = 0;
 int select = 0;
 int selectInFrame = 0;
 int selectPerFrame [] = {2,3,7,3,7}; // including scroll bar
+int frameFirstIndex[] = {0,2,5,12,15};
 //float* mainVariables [] = {eyeHeight, horizonElev, horizonTilt, posLat, posLon, heading, speedKn, timeNow};
 //eyeHeightSetFrame, horizonSetFrame, latLonSetFrame, headingSpeedSetFrame, timeGMTSetFrame
 int varIndex;
 int varSelect [] = {-1, 0, -1, 1, 2, -1, 3,  3,  3, 4,  4,  4, -1, 5,  6, -1,  7,  7,     7,    7,  7, 7}; // variable index for each select
-int varMulti [] = {0, 10,  0, 1, 1,  0, 1, 60, -1, 1, 60, -1,  0, 1, 10,  0, -2, -1, 86400, 3600, 60, 1}; // variable multiplier for each select
+int32_t varMulti [] = {0, 10,  0, 1, 1,  0, 1, 60, -1, 1, 60, -1,  0, 1, 10,  0, 31536000, 2592000, 86400, 3600, 60, 1}; // variable multiplier for each select
 int dSign; //sign of increment
 /*
 int varSelectFrame00 [] = 
@@ -425,6 +441,110 @@ unsigned char PROGMEM checkX[] =
   B00000000,
   B00000000};
 
+
+uint32_t DtoJ2000(ts t) {
+    uint16_t y;
+    uint32_t tJ2000;
+    int dayMonth[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+    Serial.print("DtoJ200 input ");
+    Serial.print(t.year);
+    Serial.print(" ");
+    Serial.print(t.mon);
+    Serial.print(" ");
+    Serial.print(t.mday);
+    Serial.print(" ");
+    Serial.print(t.hour);
+    Serial.print(" ");
+    Serial.print(t.min);
+    Serial.print(" ");
+    Serial.print(t.sec);
+    Serial.print(" = ");
+    y = t.year - 2000; // cause this is the first year < at 1970 where year % 400 = 0
+    tJ2000 = y * 31536000 - 43200 + (dayMonth[t.mon-1] + t.mday + (y/4) - ((y%4==0)&&(t.mday<3) ? 1 : 0) ) * 86400 + t.hour * 3600 + t.min * 60 + t.sec;
+    Serial.println(tJ2000);
+    if (tJ2000 < 0) {tJ2000 = 0;}
+    return tJ2000;
+}
+
+
+
+/**
+ * Convert from unix timestamp
+ */
+void setJ2000(uint32_t timestamp) {
+  ts setT;
+  ts getT;  
+  //timestamp-= T2000UTC;
+  timestamp += 43200; // convert J2000 in seconds from 1/1/2000 at 00:00
+  uint8_t second = (int)(timestamp % 60);
+  timestamp = timestamp / 60;
+  uint8_t minute = (int)(timestamp % 60);
+  timestamp = timestamp / 60;
+  uint8_t hour = (int)(timestamp % 24);
+  timestamp = timestamp / 24;
+  uint8_t year = 0;
+  int dYear = 0;
+  if (year % 4 == 0)
+    dYear = 366;
+  else
+    dYear = 365;
+  while (timestamp >= dYear) {
+    year++;
+    timestamp-=dYear;
+    if (year % 4 == 0)
+      dYear = 366;
+    else
+      dYear = 365;
+  }
+  uint8_t day = (int) timestamp;
+  int dayMonth[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+  uint8_t month = 0;
+  while (day > dayMonth[month+1])
+    month++;
+  day-=dayMonth[month];
+  month++;
+  day++;
+  setT.sec = second;
+  setT.min = minute;
+  setT.hour = hour;
+  setT.mday = day;
+  setT.mon = month;
+  setT.year = year + 2000;
+  DS3231_set(setT);
+  Serial.print(DtoJ2000(setT));
+/*    Serial.print(" ");
+    Serial.print(setT.year);
+    Serial.print(" ");
+    Serial.print(setT.mon);
+    Serial.print(" ");
+    Serial.print(setT.mday);
+    Serial.print(" ");
+    Serial.print(setT.hour);
+    Serial.print(" ");
+    Serial.print(setT.min);
+    Serial.print(" ");
+    Serial.print(setT.sec);
+    Serial.println(" ");
+    DS3231_get(&getT);
+    Serial.print("Get ");
+    Serial.print(DtoJ2000(getT));
+    Serial.print(" ");
+    Serial.print(getT.year);
+    Serial.print(" ");
+    Serial.print(getT.mon);
+    Serial.print(" ");
+    Serial.print(getT.mday);
+    Serial.print(" ");
+    Serial.print(getT.hour);
+    Serial.print(" ");
+    Serial.print(getT.min);
+    Serial.print(" ");
+    Serial.print(getT.sec);
+    Serial.println(" ");
+    Serial.println(" "); */
+}
+
+
 // utility function for digital clock display: prints leading 0
 String twoDigits(int digits){
   if(digits < 10) {
@@ -440,7 +560,7 @@ void clockOverlay(OLEDDisplay *display, OLEDDisplayUiState* state) {
 
 }
 
-void updateVariable (char* txtValues = {" "}, int16_t txtValuesCount = 0) {
+void updateVariable (int varIndex, int dSign) {
 /*  
  *   variable - pointer to the variable to update
  *   unitFraction - fraction of integer used as unit of change e.g. 1=>units 10=>10ths of unit 60=>60th of units
@@ -448,23 +568,53 @@ void updateVariable (char* txtValues = {" "}, int16_t txtValuesCount = 0) {
  *   txtValues - list of possible text values as Strings
  *   txtValuesCount - length of list
  */
-  float* variable = mainVariables[varSelect[varIndex]];
-  Serial.print("varSelect[");
-  Serial.print(varIndex);
-  Serial.print("] =");
-  Serial.print(varSelect[varIndex]);
-  Serial.print("-");
-  float minV = mainVariables[varSelect[varIndex]][1];
-  float maxV = mainVariables[varSelect[varIndex]][2];
-  if (varMulti[varIndex] == -1) { // change sign
-    *variable *= -1.0;
+  ts upT;
+  if (varSelect[varIndex] == 7) {
+    uint32_t minV = timeNow[1];
+    uint32_t maxV = timeNow[2];
+    int32_t unitFraction = varMulti[varIndex] * dSign;
+    int32_t signedTime;
+    DS3231_get(&upT);
+    Serial.print("Update ");
+    Serial.print(upT.year);
+    Serial.print(" ");
+    Serial.print(upT.mon);
+    Serial.print(" ");
+    Serial.print(upT.mday);
+    Serial.print(" ");
+    Serial.print(upT.hour);
+    Serial.print(" ");
+    Serial.print(upT.min);
+    Serial.print(" ");
+    Serial.print(upT.sec);   
+    signedTime = DtoJ2000(upT);
+    Serial.print(" ");
+    Serial.print(signedTime);   
+    Serial.print("+");
+    Serial.print(unitFraction);   
+    signedTime +=  unitFraction;
+    Serial.print("=");
+    Serial.println(signedTime);   
+    if (signedTime > maxV) {signedTime = signedTime - maxV + minV;}
+    else if (signedTime < minV) {signedTime = signedTime + maxV - minV;}    
+    timeNow[0] = signedTime;
+    setJ2000 (signedTime);    
   } else {
-    int16_t unitFraction = varMulti[varIndex] * dSign;
-    *variable += (1.0 / unitFraction);
-    if (*variable > maxV) {*variable = *variable - maxV + minV;}
-    else if (*variable < minV) {*variable = *variable + maxV - minV;}
+    float* variable = mainVariables[varSelect[varIndex]];
+    int varSign = (*variable>=0) ? 1 :-1;
+    *variable *= varSign;
+    float minV =  0;
+    float maxV = (varSign==1) ? mainVariables[varSelect[varIndex]][2] : -mainVariables[varSelect[varIndex]][1];
+    if (varMulti[varIndex] == -1) { // change sign
+      *variable *= -1.0;
+    } else {
+      int16_t unitFraction = varMulti[varIndex] * dSign;
+      *variable += (1.0 / unitFraction);
+      if (*variable > maxV) {*variable = *variable - maxV + minV;}
+      else if (*variable < minV) {*variable = *variable + maxV - minV;}
+    }
+    *variable *= varSign;
   }
-  Serial.println(variable[0]);
 }
 
 void drawPointer (OLEDDisplay *display, int16_t x, int16_t y, int16_t dir, int16_t r = 10, int8_t s = 2) {
@@ -641,6 +791,16 @@ void horizonSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x,
 void latLonSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
   unsigned char* iconUp = arrowUp;
   unsigned char* iconDown = arrowDown;
+  float lat = mainVariables[3][0];
+  float ulat = (lat >= 0.0) ? lat: -lat;
+  char NS = (lat >= 0.0) ? 'N': 'S';
+  float lon = mainVariables[4][0];
+  float ulon = (lon >= 0.0) ? lon: -lon;
+  char EW = (lon >= 0.0) ? 'E': 'W';
+  int latDeg = int(ulat);
+  int latMin = int(60.0*(ulat-latDeg));
+  int lonDeg = int(ulon);
+  int lonMin = int(60.0*(ulon-lonDeg));
   if (select == selectPerFrame[frame]-1) {
     iconUp = checkY;
     iconDown = checkX;
@@ -654,12 +814,12 @@ void latLonSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, 
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
   display->drawString(screenW , 0, "Estimate" );
   //buttons
-  drawData (display, 16, centerY, "Lat.", String(int(mainVariables[3][0])));
-  drawData (display, 32, centerY, "", String(mainVariables[3][0]-int(mainVariables[3][0])));
-  drawData (display, 48, centerY, "", "N");
-  drawData (display, 64, centerY, "Lon.", "05º");
-  drawData (display, 80, centerY, "", "12'");
-  drawData (display, 96, centerY, "", "E");
+  drawData (display, 16, centerY, "Lat.", String(latDeg)+"º");
+  drawData (display, 32, centerY, "", twoDigits(latMin)+"'");
+  drawData (display, 48, centerY, "", String(NS));
+  drawData (display, 64, centerY, "Lon.", String(lonDeg)+"º");
+  drawData (display, 80, centerY, "", twoDigits(lonMin)+"'");
+  drawData (display, 96, centerY, "", String(EW));
 //  drawData (display, 112, centerY, "", "OK");
   if (select!=0) {drawButton (display, 16+16*(select-1), centerY, iconUp, iconDown);}
 }
@@ -667,6 +827,9 @@ void latLonSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, 
 void headingSpeedSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
   unsigned char* iconUp = arrowUp;
   unsigned char* iconDown = arrowDown;
+  int iHeading = int(mainVariables[5][0]);
+  int iSpeed =  int(mainVariables[6][0]);
+  int dSpeed = int(10*(mainVariables[6][0]-iSpeed));
   if (select == selectPerFrame[frame]-1) {
     iconUp = checkY;
     iconDown = checkX;
@@ -680,15 +843,16 @@ void headingSpeedSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
   display->drawString(screenW , 0, "Estimate" );
   //buttons
-  drawData (display, 32, centerY, "Heading", "215º");
-  drawData (display, 64, centerY, "Speed", "4.3kt");
+  drawData (display, 32, centerY, "Heading", String(iHeading)+"º");
+  drawData (display, 80, centerY, "Speed (kn)", String(iSpeed)+"."+String(dSpeed));
 //  drawData (display, 96, centerY, "", "OK");
-  if (select!=0) {drawButton (display, 32+32*(select-1), centerY, iconUp, iconDown);}
+  if (select!=0) {drawButton (display, 32+48*(select-1), centerY, iconUp, iconDown);}
 }
 
 void timeGMTSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
   unsigned char* iconUp = arrowUp;
   unsigned char* iconDown = arrowDown;
+  DS3231_get(&t);
   if (select == selectPerFrame[frame]-1) {
     iconUp = checkY;
     iconDown = checkX;
@@ -702,12 +866,12 @@ void timeGMTSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x,
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
   display->drawString(screenW , 0, "OK resets sec." );
   //buttons
-  drawData (display, 16, centerY, "Y", "19");
-  drawData (display, 32, centerY, "M", "05");
-  drawData (display, 48, centerY, "D", "27");
-  drawData (display, 64, centerY, "h", "13");
-  drawData (display, 80, centerY, "m", "56");
-  drawData (display, 96, centerY, "s", "45");
+  drawData (display, 16, centerY, "Y", String(twoDigits(t.year_s)));
+  drawData (display, 32, centerY, "M", String(twoDigits(t.mon)));
+  drawData (display, 48, centerY, "D", String(twoDigits(t.mday)));
+  drawData (display, 64, centerY, "h", String(twoDigits(t.hour)));
+  drawData (display, 80, centerY, "m", String(twoDigits(t.min)));
+  drawData (display, 96, centerY, "s", String(twoDigits(t.sec)));
 //  drawData (display, 112, centerY, "", "OK");
   if (select!=0) {drawButton (display, 16+16*(select-1), centerY, iconUp, iconDown);}
 }
@@ -912,6 +1076,12 @@ void loop() {
   int remainingTimeBudget = ui.update();
 
   if (remainingTimeBudget > 0) {
+/*    if (millis()-millisNow > 1000) {
+      DS3231_get(&t);
+      timeNow[0] = dToJ2000(t);
+      millisNow = millis();
+    }
+*/
     
 /*    if (millis()-millisNow > 3000) {
       millisNow=millis();
@@ -929,11 +1099,6 @@ void loop() {
 */
     event = checkEvent();
     if (event!=0xFF) {
-//      DS3231_get(&t); //get the value and pass to the function the pointer to t, that make an lower memory fingerprint and faster execution than use return
-//    #ifdef CONFIG_UNIXTIME
-//      Serial.print(" Timestamp : ");
-//      Serial.println(t.unixtime);
-//    #endif
       button = (event >> 4);
       if (button == BUTT_JOINT) {
         freq = BUZZLOW;
@@ -944,7 +1109,7 @@ void loop() {
         switch (call) {
           case 0x01: { // CONFIRM short
             select = (select+1) % selectInFrame;
-            varIndex = setupFrame + select;   //EDIT THIS, IT IS WRONG!!! 
+            varIndex = frameFirstIndex[setupFrame] + select; 
             break;
           }
           case 0x02: { // UP short
@@ -954,7 +1119,7 @@ void loop() {
               ui.switchToFrame(mode+setupFrame);
             } else { //set unit increase for select variable
               dSign = 1;
-              updateVariable();
+              updateVariable(varIndex, dSign);
               dSign = 0;
             }
             break;
@@ -984,7 +1149,7 @@ void loop() {
               ui.switchToFrame(mode+setupFrame);
             } else { // set unit decrease for select variable
               dSign = -1;
-              updateVariable();
+              updateVariable(varIndex, dSign);
               dSign = 0;
             }
             break;
@@ -1016,21 +1181,14 @@ void loop() {
         else { 
           ui.switchToFrame(mode+setupFrame);
           selectInFrame = selectPerFrame[setupFrame];
-//          selectVariable = firstVariable [setupFrame]; //first variable in setupFrame
         }
-      }       
-      Serial.print(mode);
-      Serial.print("-");
-      Serial.print(setupFrame);
-      Serial.print("-");
-      Serial.println(select);
-//      editValue (mode, (act & 0x1F));
+      }
     }
     // update variable
-    //  if long pressed then change by unit and 
+    //  if long pressed then change by unit every 100ms 
     if ((dSign !=0) && (millis() - lastFastUpdate > 100)) {
       lastFastUpdate = millis();
-      updateVariable();
+      updateVariable(varIndex, dSign);
     }
   }
 }
