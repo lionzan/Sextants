@@ -125,6 +125,14 @@ byte buttStatus[NUMBUTTONS] = {ST_RELEASED,ST_RELEASED,ST_RELEASED,ST_RELEASED};
 unsigned long pressedSince[NUMBUTTONS] = {0,0,0,0};
 
 // main variables - value, min, max
+// STARFINDER mode
+uint16_t iaster[] = {0, 0, 0}; // index of current aster in starfinder. MAX to be updated according to current list
+// TAKE_SIGHT mode
+float asterEle[] = {0.0,0,90};
+float asterAzi[] = {0.0,0,360};
+// POS_FIX  variables
+uint16_t isight[] = {0, 0, 0}; // index of currrent sight. MAX to be updated according to current list
+// SETUP variables
 float eyeHeight[] = {1.5,0,99};     //
 float horizonElev [] = {0,-90,90};     //
 float horizonTilt[] = {0,-90,90};     //
@@ -179,7 +187,7 @@ struct sight {
   float lat; // aster latitude
   int ast; // index of aster
 };
-sight sights[100]; // last 100 sights
+sight sights[0]; // last sights
 // should be stored in EEPROM and downloaded via WiFi to computer for storage
 // or stored on file in SD card
 
@@ -1120,7 +1128,7 @@ void loop() {
             } else { //set unit increase for select variable
               dSign = 1;
               updateVariable(varIndex, dSign);
-              dSign = 0;
+              dSign = 0; 
             }
             break;
           }
