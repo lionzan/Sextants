@@ -219,7 +219,7 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
   },
   { // current mode M_TAKE_SIGHT
     { // button CONFIRM
-      0xFF, // SHORT - swap Elevation/Azimuth/Star
+      0xFF, // SHORT - swap Elevation/Azimuth
       (M_STARFINDER << 5), // START_LONG - take sight and switch to M_STARFINDER
       0xFF  // END_LONG   - nil
     },
@@ -261,7 +261,7 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
       0xFF // END_LONG   - nil
     }
   },
-  { // current mode M_SETUP - eyeHeightSet
+  { // current mode M_SETUP
     { // button CONFIRM
       (0x7<<5)|0x01, // PRESS      - switch to next item in group
       0xFF, // START_LONG - nil
@@ -294,9 +294,12 @@ int centerY = screenH/2;
 int frame = 0;
 int select = 0;
 int selectInFrame = 0;
+int iFirstSetupFrame = 3;
+int iLastFrame = 7;
+int setupFrames = 5; // total frames in SETUP
 int selectPerFrame [] = {1,2,1,2,3,7,3,7}; // including scroll bar in setup
 int frameFirstIndex[] = {0,1,3,4,6,9,16,19};
-float* mainVariables [] = {iaster, asterEle, asterAzi, isight, 
+float* mainVariables [] = {iaster, asterAzi, asterEle, isight, 
                           eyeHeight, horizonElev, horizonTilt, 
                           posLat, posLon, heading, speedKn};
 int varIndex;
@@ -308,7 +311,6 @@ int varSelectFrame00 [] =
 variable[select][frame]
 factor[select][frame]
 */
-int setupFrames = 5; // total frames in SETUP
 int setupFrame = 0; //current frame in SETUP
 int call; // function to call
 int millisNow = millis();
@@ -577,38 +579,26 @@ void updateVariable (int varIndex, int dSign) {
  *   txtValuesCount - length of list
  */
   ts upT;
-  if (varSelect[varIndex] == 7) {
+  Serial.print("varSelect[");
+  Serial.print(varIndex);
+  Serial.print("] = ");
+  Serial.println(varSelect[varIndex]);
+  if (varSelect[varIndex] == 11) {
     uint32_t minV = timeNow[1];
     uint32_t maxV = timeNow[2];
     int32_t unitFraction = varMulti[varIndex] * dSign;
     int32_t signedTime;
     DS3231_get(&upT);
-    Serial.print("Update ");
-    Serial.print(upT.year);
-    Serial.print(" ");
-    Serial.print(upT.mon);
-    Serial.print(" ");
-    Serial.print(upT.mday);
-    Serial.print(" ");
-    Serial.print(upT.hour);
-    Serial.print(" ");
-    Serial.print(upT.min);
-    Serial.print(" ");
-    Serial.print(upT.sec);   
     signedTime = DtoJ2000(upT);
-    Serial.print(" ");
-    Serial.print(signedTime);   
-    Serial.print("+");
-    Serial.print(unitFraction);   
     signedTime +=  unitFraction;
-    Serial.print("=");
-    Serial.println(signedTime);   
     if (signedTime > maxV) {signedTime = signedTime - maxV + minV;}
     else if (signedTime < minV) {signedTime = signedTime + maxV - minV;}    
     timeNow[0] = signedTime;
     setJ2000 (signedTime);    
   } else {
     float* variable = mainVariables[varSelect[varIndex]];
+    Serial.print("variable ––– pre = ");
+    Serial.print(*variable);
     int varSign = (*variable>=0) ? 1 :-1;
     *variable *= varSign;
     float minV =  0;
@@ -622,6 +612,8 @@ void updateVariable (int varIndex, int dSign) {
       else if (*variable < minV) {*variable = *variable + maxV - minV;}
     }
     *variable *= varSign;
+    Serial.print(" ––– post = ");
+    Serial.println(*variable);
   }
 }
 
@@ -750,10 +742,6 @@ void positionFixFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x
 void eyeHeightSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
   unsigned char* iconUp = arrowUp;
   unsigned char* iconDown = arrowDown;
-  if (select == selectPerFrame[frame]-1) {
-    iconUp = checkY;
-    iconDown = checkX;
-  }
   drawScrollBar(display, 0, 5, (select==0));
   display->setFont(Dialog_plain_8);
   //mode
@@ -764,7 +752,7 @@ void eyeHeightSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t 
   display->drawString(screenW , 0, "Estimate" );
   //buttons
   
-  drawData (display, 32, centerY, "Eye Height", String(mainVariables[0][0]));
+  drawData (display, 32, centerY, "Eye Height", String(mainVariables[4][0]));
 //  drawData (display, 64, centerY, "", "OK");
   if (select!=0) {drawButton (display, 32+32*(select-1), centerY, iconUp, iconDown);}
 }
@@ -799,20 +787,16 @@ void horizonSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x,
 void latLonSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
   unsigned char* iconUp = arrowUp;
   unsigned char* iconDown = arrowDown;
-  float lat = mainVariables[3][0];
+  float lat = mainVariables[7][0];
   float ulat = (lat >= 0.0) ? lat: -lat;
   char NS = (lat >= 0.0) ? 'N': 'S';
-  float lon = mainVariables[4][0];
+  float lon = mainVariables[8][0];
   float ulon = (lon >= 0.0) ? lon: -lon;
   char EW = (lon >= 0.0) ? 'E': 'W';
   int latDeg = int(ulat);
   int latMin = int(60.0*(ulat-latDeg));
   int lonDeg = int(ulon);
   int lonMin = int(60.0*(ulon-lonDeg));
-  if (select == selectPerFrame[frame]-1) {
-    iconUp = checkY;
-    iconDown = checkX;
-  }
   drawScrollBar(display, 2, 5, (select==0));
   display->setFont(Dialog_plain_8);
   //mode
@@ -835,13 +819,9 @@ void latLonSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, 
 void headingSpeedSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
   unsigned char* iconUp = arrowUp;
   unsigned char* iconDown = arrowDown;
-  int iHeading = int(mainVariables[5][0]);
-  int iSpeed =  int(mainVariables[6][0]);
-  int dSpeed = int(10*(mainVariables[6][0]-iSpeed));
-  if (select == selectPerFrame[frame]-1) {
-    iconUp = checkY;
-    iconDown = checkX;
-  }
+  int iHeading = int(mainVariables[9][0]);
+  int iSpeed =  int(mainVariables[10][0]);
+  int dSpeed = int(10*(mainVariables[10][0]-iSpeed));
   drawScrollBar(display, 3, 5, (select==0));
   display->setFont(Dialog_plain_8);
   //mode
@@ -1092,84 +1072,86 @@ void loop() {
       }
       act = action[(byte)mode][(byte)event>>4][((byte)event & 0x03)];
       call = act & 0x1F;
-      if (mode==M_SETUP) {
-        switch (call) {
-          case 0x01: { // CONFIRM short
-            select = (select+1) % selectInFrame;
-            varIndex = frameFirstIndex[setupFrame] + select; 
-            break;
+      switch (call) {
+        case 0x01: { // CONFIRM short
+          select = (select+1) % selectInFrame;
+          varIndex = frameFirstIndex[frame] + select; 
+          Serial.print("select = ");
+          Serial.print(select);
+          Serial.print(" –-- varIndex = ");
+          Serial.println(varIndex);
+          break;
+        }
+        case 0x02: { // UP short
+          if ((select == 0) && (mode==M_SETUP)) { //scoll to previous setupFrame
+            frame = iFirstSetupFrame + (setupFrames + frame - iFirstSetupFrame - 1) % setupFrames;
+            selectInFrame = selectPerFrame[frame];
+            ui.switchToFrame(frame);
+          } else { //set unit increase for select variable
+            dSign = 1;
+            updateVariable(varIndex, dSign);
+            dSign = 0; 
           }
-          case 0x02: { // UP short
-            if (select == 0) { //scoll to previous setupFrame
-              setupFrame = (setupFrames + setupFrame - 1) % setupFrames;
-              selectInFrame = selectPerFrame[setupFrame];
-              ui.switchToFrame(mode+setupFrame);
-            } else { //set unit increase for select variable
-              dSign = 1;
-              updateVariable(varIndex, dSign);
-              dSign = 0; 
-            }
-            break;
+          break;
+        }
+        case 0x03: { //UP long start
+          if ((select == 0) && (mode==M_SETUP)) { //scoll to previous setupFrame
+            frame = iFirstSetupFrame + (setupFrames + frame - iFirstSetupFrame - 1) % setupFrames;
+            selectInFrame = selectPerFrame[frame];
+            ui.switchToFrame(frame);
+          } else { //set unit increase for select variable
+            dSign = 1;
+            lastFastUpdate = millis();
           }
-          case 0x03: { //UP long start
-            if (select == 0) { //scoll to previous setupFrame
-              setupFrame = (setupFrames + setupFrame - 1) % setupFrames;
-              selectInFrame = selectPerFrame[setupFrame];
-              ui.switchToFrame(mode+setupFrame);
-            } else { //set unit increase for select variable
-              dSign = 1;
-              lastFastUpdate = millis();
-            }
-            break;
+          break;
+        }
+        case 0x04: { //UP long end
+          if ((select == 0) && (mode==M_SETUP)) { //do nothing
+          } else { //set unit increase for select variable
+            dSign = 0;
           }
-          case 0x04: { //UP long end
-            if (select == 0) { //do nothing
-            } else { //set unit increase for select variable
-              dSign = 0;
-            }
-            break;
+          break;
+        }
+        case 0x05: { // DOWN short
+          if ((select == 0) && (mode==M_SETUP)) { //scoll to next setupFrame
+            frame = iFirstSetupFrame + (frame - iFirstSetupFrame + 1) % setupFrames;
+            selectInFrame = selectPerFrame[frame];
+            ui.switchToFrame(frame);
+          } else { // set unit decrease for select variable
+            dSign = -1;
+            updateVariable(varIndex, dSign);
+            dSign = 0;
           }
-          case 0x05: { // DOWN short
-            if (select == 0) { //scoll to next setupFrame
-              setupFrame = (setupFrame + 1) % setupFrames;
-              selectInFrame = selectPerFrame[setupFrame];
-              ui.switchToFrame(mode+setupFrame);
-            } else { // set unit decrease for select variable
-              dSign = -1;
-              updateVariable(varIndex, dSign);
-              dSign = 0;
-            }
-            break;
+          break;
+        }
+        case 0x06: { //DOWN long start
+          if ((select == 0) && (mode==M_SETUP)) { //scoll to previous setupFrame
+            frame = iFirstSetupFrame + (frame - iFirstSetupFrame + 1) % setupFrames;
+            selectInFrame = selectPerFrame[frame];
+            ui.switchToFrame(frame);
+          } else { //set unit increase for select variable
+            dSign = -1;
+            lastFastUpdate = millis();
           }
-          case 0x06: { //DOWN long start
-            if (select == 0) { //scoll to previous setupFrame
-              setupFrame = (setupFrames + setupFrame - 1) % setupFrames;
-              selectInFrame = selectPerFrame[setupFrame];
-              ui.switchToFrame(mode+setupFrame);
-            } else { //set unit increase for select variable
-              dSign = -1;
-              lastFastUpdate = millis();
-            }
-            break;
+          break;
+        }
+        case 0x07: { //DOWN long end
+          if ((select == 0) && (mode==M_SETUP)) { //do nothing
+          } else { //set unit increase for select variable
+            dSign = 0;
           }
-          case 0x07: { //DOWN long end
-            if (select == 0) { //do nothing
-            } else { //set unit increase for select variable
-              dSign = 0;
-            }
-            break;
-          }
+          break;
         }
       }
+
       // change mode after running functions
-      if ( (act>>5) != 0x7 ) {
+      if ( (act>>5) != 0x7 ) {  // 0x7 is any Setup command
         mode = act>>5;
-        if (mode!=3) { ui.switchToFrame(mode); } 
-        else { 
-          ui.switchToFrame(mode+setupFrame);
-          selectInFrame = selectPerFrame[setupFrame];
-        }
-      }
+        frame = mode;
+        selectInFrame = selectPerFrame[frame];
+        ui.switchToFrame(mode); // should be able to switch between frames in setup
+        select = 0;
+      } 
     }
     // update variable
     //  if long pressed then change by unit every 100ms 

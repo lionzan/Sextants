@@ -100,6 +100,9 @@ actionFunction* actionFunctions;
 
 ts t; //ts is a struct findable in ds3231.h
 
+ts upT;
+int32_t timePre = 0;
+
 byte mode = 0x00;
 // define modes names
 char m00[]="Starfinder";
@@ -124,33 +127,93 @@ byte justPressed[NUMBUTTONS], justReleased[NUMBUTTONS];
 byte buttStatus[NUMBUTTONS] = {ST_RELEASED,ST_RELEASED,ST_RELEASED,ST_RELEASED};
 unsigned long pressedSince[NUMBUTTONS] = {0,0,0,0};
 
-// main variables - value, min, max
+// main variables - value, min, max, cyclical (1 yes, 0 no)
 // STARFINDER mode
-float iaster[] = {0.0, 0, 0}; // index of current aster in starfinder. MAX to be updated according to current list
+float iAsterSet[] = {0.0, 0, 8, 1}; // index of current set of asters: All, Pla, M123, M1, M12, M2, M23, M3
+float iAster[] = {0.0, 0, 56, 1}; // index of current aster in starfinder. MAX to be updated according to current list
 // TAKE_SIGHT mode
-float asterEle[] = {0.0,0,90};
-float asterAzi[] = {0.0,0,360};
+float asterEle[] = {0.0,0,90,0};
+float asterAzi[] = {0.0,0,360,1};
 // POS_FIX  variables
-float isight[] = {0.0, 0, 0}; // index of currrent sight. MAX to be updated according to current list
+float iSight[] = {0.0, 0, 10, 1}; // index of currrent sight. MAX to be updated according to current list
 // SETUP variables
-float eyeHeight[] = {1.5,0,99};     //
-float horizonElev [] = {0,-90,90};     //
-float horizonTilt[] = {0,-90,90};     //
-float posLat[] = {51.473762,-90,90};     //
-float posLon[] = {-0.224904,-180,180};     //
-float heading[] = {32.0,0,360};         //
-float speedKn[] = {4.0,0,20};         //
-uint32_t timeNow[] = {631152000,0,2147483647};            //time now, seconds from J2000 , max size in uint32, approx to 2068
+float eyeHeight[] = {1.5,0,99, 0};     //
+float horizonElev [] = {0,-90,90,0};     //
+float horizonTilt[] = {0,-90,90,0};     //
+float posLat[] = {51.473762,-90,90,0};     //
+float posLon[] = {-0.224904,-180,180,1};     //
+float heading[] = {32.0,0,360,1};         //
+float speedKn[] = {4.0,0,20,0};         //
+uint32_t timeNow[] = {631152000,0,2147483647,0};            //time now, seconds from J2000 , max size in uint32, approx to 2068
 
 // stars data (fixed, could stay in EEPROM)
 struct star {
-  float sha; // SHA
+  float ra; // RA
   float dec; // declination
   float ama; // apparent magnitude
-  char sid [6]; // star ID
+  char sid [7]; // star ID
   String sName; // star Name
+} stars[] = {
+  {44.56533008,-40.30467935,3.2,"tetEri","Acamar"},
+  {24.42852283,-57.23675281,0.5,"alfEri","Achernar"},
+  {186.6495634,-63.09909286,1.4,"alfCru","Acrux"},
+  {104.6564532,-28.97208616,1.51,"epsCMa","Adhara"},
+  {68.98016279,+16.50930235,0.85,"alfTau","Aldebaran"},
+  {193.50729,+55.9598229569,1.76,"epsUMa","Alioth"},
+  {206.8851573,+49.31326673,1.85,"etaUMa","Alkaid"},
+  {84.05338894,-1.20191914,1.7,"epsOri","Alnilam"},
+  {141.8968446,-8.65859953,2,"alfHya","Alphard"},
+  {233.67195,+26.71469278,2.24,"alfCrB","Alphecca"},
+  {2.09691619,+29.09043112,2.06,"alfAnd","Alpheratz"},
+  {297.6958273,+08.86832120,0.77,"alfAql","Altair"},
+  {6.57104752,-42.30598719,2.37,"alfPhe","Ankaa"},
+  {247.3519154,-26.43200261,1.09,"alfSco","Antares"},
+  {213.9153003,+19.18240916,-0.04,"alfBoo","Arcturus"},
+  {252.1662295,-69.02771185,1.92,"alfTrA","Atria"},
+  {125.6284802,-59.50948419,2.4,"epsCar","Avior"},
+  {81.28276356,+06.34970326,1.64,"gamOri","Bellatrix"},
+  {88.79293899,+07.40706400,0.58,"alfOri","Betelgeuse"},
+  {95.98795783,-52.69566138,-0.72,"alfCar","Canopus"},
+  {79.17232794,+45.99799147,0.71,"alfAur","Capella"},
+  {310.3579798,+45.28033881,1.25,"alfCyg","Deneb"},
+  {177.2649098,+14.57205806,2.14,"betLeo","Denebola"},
+  {10.89737874,-17.98660632,2.04,"betCet","Diphda"},
+  {165.9319647,+61.75103469,1.87,"alfUMa","Dubhe"},
+  {81.57297133,+28.60745172,1.68,"betTau","Elnath"},
+  {269.1515412,+51.48889562,2.23,"gamDra","Eltanin"},
+  {326.0464839,+09.8750086533,2.4,"epsPeg","Enif"},
+  {344.4126927,-29.62223703,1.16,"alfPsA","Fomalhaut"},
+  {187.7914984,-57.11321346,1.63,"gamCru","Gacrux"},
+  {183.951545,-17.54193046,2.8,"gamCrv","Gienah"},
+  {210.9558556,-60.37303516,0.6,"betCen","Hadar"},
+  {31.7933571,+23.46241755,2,"alfAri","Hamal"},
+  {276.0429934,-34.38461649,1.8,"epsSgr","Kaus Australis"},
+  {222.6763575,+74.15550394,2.08,"betUMi","Kochab"},
+  {346.1902227,+15.20526715,2.49,"alfPeg","Markab"},
+  {45.5698878,+04.08973877,2.5,"alfCet","Menkar"},
+  {211.6706147,-36.36995474,2.06,"tetCen","Menkent"},
+  {138.2999061,-69.7172076,1.7,"betCar","Miaplacidus"},
+  {51.08070872,+49.8611792931,1.82,"alfPer","Mirfak"},
+  {283.8163604,-26.29672411,2.06,"sigSgr","Nunki"},
+  {306.4119044,-56.73508973,1.91,"alfPav","Peacock"},
+  {37.95456067,+89.26410897,2.01,"alfUMi","Polaris"},
+  {116.3289578,+28.02619889,1.15,"betGem","Pollux"},
+  {114.8254979,+05.22498756,0.34,"alfCMi","Procyon"},
+  {263.7336227,+12.56003739,2.1,"alfOph","Rasalhague"},
+  {152.0929624,+11.96720878,1.35,"alfLeo","Regulus"},
+  {78.63446707,-8.20163836,0.12,"betOri","Rigel"},
+  {257.5945287,-15.72490664,2.43,"etaOph","Sabik"},
+  {10.12683778,+56.5373311583,2.25,"alfCas","Schedar"},
+  {263.4021672,-37.10382355,1.62,"lamSco","Shaula"},
+  {101.2871553,-16.71611586,-1.47,"alfCMa","Sirius"},
+  {201.2982474,-11.16131949,1.04,"alfVir","Spica"},
+  {136.9989911,-43.43259091,2.23,"lamVel","Suhail"},
+  {279.2347348,+38.78368896,0.03,"alfLyr","Vega"},
+  {222.7196379,-16.04177652,3.28,"f02Lib","Zubenelgenubi"}  
 };
-star stars[100];
+int nStars = sizeof(stars)/sizeof(stars[0]);
+float M1 = 1.3;
+float M2 = 2.0;
 
 // planets data (fixed, could stay in EEPROM)
 struct planet {
@@ -169,24 +232,38 @@ planet planets[9];
 // moon data (fixed, could stay in EEPROM)
 //...
 
-struct aster { // position of asters in sky Now
-  uint32_t tas; // time of position
-  float lon; // longitude
-  float lat; // latitude
-  int ast; // index of aster (9 planets + moon + stars)
-};
-aster asters [0]; // the currently visible asters sorted eastward (last aster in list is first West of us)
+struct aster { // position of asters in sky Now 
+  byte type; // type of aster 0, 1, 2, 3 -  Helios Moon Planet Star
+  int index; // index in type list
+  float mag; // magnitude of aster
+  float ele; // elevation
+  float azi; // azimuth
+} asters [110]; // all asters: [0..8] planets, [9] moon, [10..110] stars with index+10
+int nAsters = 0;
 
+int avAll[100]; // index in asters of the currently visible asters sorted eastward (last aster in list is first West of us)
+int avPla[10]; //index in asters of visible planets  + sun + moon
+int avM123[100]; // index in asters of the M123 visible asters sorted eastward (last aster in list is first West of us)
+int avM1[100]; // index in asters of the M1 visible asters sorted eastward (last aster in list is first West of us)
+int avM12[100]; // index in asters of the M1-2 visible asters sorted eastward (last aster in list is first West of us)
+int avM2[100]; // index in asters of the M2 visible asters sorted eastward (last aster in list is first West of us)
+int avM23[100]; // index in asters of the M2-3 visible asters sorted eastward (last aster in list is first West of us)
+int avM3[100]; // index in asters of the M3 visible asters sorted eastward (last aster in list is first West of us)
+int navAll = 0;
+int navPla = 0;
+int navM123 = 0;
+int navM1 = 0;
+int navM12 = 0;
+int navM2 = 0;
+int navM23 = 0;
+int navM3 = 0;
 // sights
 struct sight {
   uint32_t tsi; // time of sight
   float ele; // elevation
   float gaz; // geographical azimuth
-  float lon; // aster longitude
-  float lat; // aster latitude
   int ast; // index of aster
-};
-sight sights[0]; // last sights
+} sights[0]; // last sights
 // should be stored in EEPROM and downloaded via WiFi to computer for storage
 // or stored on file in SD card
 
@@ -202,37 +279,37 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
       0xFF  // END_LONG   - nil
     },
     { // button pressed UP
-      0xFF, // SHORT       - scroll aross visible stars
-      0xFF, // START_LONG  - start scrolling aross stars
-      0xFF  // END_LONG    - finish scrolling aross stars
+      (0x7<<5)|0x02, // SHORT       - scroll aross visible stars
+      (0x7<<5)|0x03, // START_LONG  - start scrolling aross stars
+      (0x7<<5)|0x04  // END_LONG    - finish scrolling aross stars
     },
     { // button pressed DOWN
-      0xFF, // SHORT       - scroll aross visible stars
-      0xFF, // START_LONG  - start scrolling aross stars
-      0xFF  // END_LONG    - finish scrolling aross stars
+      (0x7<<5)|0x05, // SHORT       - scroll aross visible stars
+      (0x7<<5)|0x06, // START_LONG  - start scrolling aross stars
+      (0x7<<5)|0x07  // END_LONG    - finish scrolling aross stars
     },
     { // button pressed JOINT
-      0xFF, // SHORT       - select closest aster (then UP and DOWN scroll East and West in list of asters)
+      (0x7<<5)|0x08, // SHORT       - select closest aster (then UP and DOWN scroll East and West in list of asters)
       (M_SETUP << 5), // START_LONG -switch to SETUP
       0xFF // END_LONG   - nil
     }
   },
   { // current mode M_TAKE_SIGHT
     { // button CONFIRM
-      0xFF, // SHORT - swap Elevation/Azimuth/Star
+      (0x7<<5)|0x01, // SHORT - swap Elevation/Azimuth
       (M_STARFINDER << 5), // START_LONG - take sight and switch to M_STARFINDER
       0xFF  // END_LONG   - nil
     },
     { // button pressed UP
-      0xFF, // SHORT      - increase reading stepwise and update crosshatch
-      0xFF, // START_LONG - start increase reading fast
-      0xFF  // END_LONG   - stop increase reading fast
+      (0x7<<5)|0x02, // SHORT      - increase reading stepwise and update crosshatch
+      (0x7<<5)|0x03, // START_LONG - start increase reading fast
+      (0x7<<5)|0x04  // END_LONG   - stop increase reading fast
     },
     { // button pressed DOWN
-      0xFF, // SHORT      - decrease reading stepwise and update crosshatch
-      0xFF, // START_LONG - start increase reading fast
-      0xFF  // END_LONG   - stop increase reading fast
-    },
+      (0x7<<5)|0x05, // SHORT      - decrease reading stepwise and update crosshatch
+      (0x7<<5)|0x06, // START_LONG - start increase reading fast
+      (0x7<<5)|0x07  // END_LONG   - stop increase reading fast
+    },    
     { // button pressed JOINT
       0xFF, // SHORT      - 
       (M_STARFINDER << 5), // START_LONG - exit without changes, switch to Starfinder mode (to find another star)
@@ -261,7 +338,7 @@ byte action[4][4][3] = {   // alternative solution with ACTION states
       0xFF // END_LONG   - nil
     }
   },
-  { // current mode M_SETUP - eyeHeightSet
+  { // current mode M_SETUP
     { // button CONFIRM
       (0x7<<5)|0x01, // PRESS      - switch to next item in group
       0xFF, // START_LONG - nil
@@ -294,21 +371,19 @@ int centerY = screenH/2;
 int frame = 0;
 int select = 0;
 int selectInFrame = 0;
+int iFirstSetupFrame = 3;
+int iLastFrame = 7;
+int setupFrames = 5; // total frames in SETUP
 int selectPerFrame [] = {1,2,1,2,3,7,3,7}; // including scroll bar in setup
 int frameFirstIndex[] = {0,1,3,4,6,9,16,19};
-float* mainVariables [] = {iaster, asterEle, asterAzi, isight, 
+float* mainVariables [] = {iAster, asterAzi, asterEle, iSight, 
                           eyeHeight, horizonElev, horizonTilt, 
                           posLat, posLon, heading, speedKn};
 int varIndex;
 int varSelect [] =    {0, 1, 2, 3, -1,  4, -1, 5, 6, -1, 7,  7,  7, 8,  8,  8, -1, 9, 10, -1,       11,      11,    11,   11, 11, 11}; // variable index for each select
-int32_t varMulti [] = {1, 1, 1, 1,  0, 10,  0, 1, 1,  0, 1, 60, -1, 1, 60, -1,  0, 1, 10,  0, 31536000, 2592000, 86400, 3600, 60,  1}; // variable multiplier for each select
+int32_t varMulti [] = {1, 60, 60, 1,  0, 10,  0, 1, 1,  0, 1, 60, -1, 1, 60, -1,  0, 1, 10,  0, 31536000, 2592000, 86400, 3600, 60,  1}; // variable multiplier for each select
 int dSign; //sign of increment
-/*
-int varSelectFrame00 [] = 
-variable[select][frame]
-factor[select][frame]
-*/
-int setupFrames = 5; // total frames in SETUP
+
 int setupFrame = 0; //current frame in SETUP
 int call; // function to call
 int millisNow = millis();
@@ -449,27 +524,134 @@ unsigned char PROGMEM checkX[] =
   B00000000,
   B00000000};
 
+float LST() { // Local Sidereal Time now at current location (from https://sohcahtoa.org.uk/kepler/altaz.html)
+  float dJ = timeNow[0]/86400.0;  //current Julian day, fractional
+  float tmp = (100.46 + posLon[0]  // positive East
+        + 0.98564736628603 * dJ 
+        + 2.907879e-13 * dJ * dJ 
+        - 5.302e-22 *  dJ * dJ * dJ
+        + 15.0 * upT.hour + 15.0 * upT.min/60 + 15.0 * upT.sec/3600 ); 
+  tmp -= 360 * int(tmp/360);
+  return tmp;
+}
 
+void RaDec2EleAzi (float RA, float Decl, float* Ele, float* Azi) {
+// sin(ALT) = sin(DEC)*sin(LAT)+cos(DEC)*cos(LAT)*cos(HA)
+// X = sin(DEC) - sin(LAT) * SIN(ALT)
+// Y = -cos(dec) * cos(LAT) * sin(HA)  
+  float HA = LST() - RA;
+  *Ele = degrees( asin ( sin(radians(Decl)) * sin(radians(posLat[0])) + cos(radians(Decl)) * cos(radians(posLat[0])) * cos(radians(HA)) ) );
+  *Azi = degrees ( atan2 ( -cos(radians(Decl)) * cos(radians(posLat[0])) * sin(radians(HA)) , sin(radians(Decl)) - sin(radians(posLat[0])) * sin(radians(*Ele))) );
+  *Azi += 360.0;
+  *Azi -= 360.0 * int(*Azi / 360);
+}
+
+void astersNow() {
+  float Ele;
+  float Azi;
+  aster temp;
+  boolean swapped = true;
+  for (int iStar; iStar <= nStars; iStar++) {
+    RaDec2EleAzi (stars[iStar].ra, stars[iStar].dec, &Ele, &Azi);
+    asters[iStar+10].type = 3; //star
+    asters[iStar+10].index = iStar;
+    asters[iStar+10].mag = stars[iStar].ama;
+    asters[iStar+10].ele = Ele;
+    asters[iStar+10].azi = Azi;
+  }
+  while (swapped) { // sort ascending Azi
+    swapped = false;
+    for (int i=0; i<nStars+10; i++) {
+      if (asters[i].azi > asters[i+1].azi) {
+        temp = asters[i];
+        asters[i] = asters[i+1];
+        asters[i+1] = temp;
+        swapped = true;
+      }
+    }
+  }
+  navAll = 0;
+  navPla = 0;
+  navM123 = 0;
+  navM1 = 0;
+  navM12 = 0;
+  navM2 = 0;
+  navM23 = 0;
+  navM3 = 0;
+  for (int i=0; i<=nStars+10; i++) {
+    if (asters[i].ele > 0) {
+      avAll[navAll] = i;
+      navAll++;
+      switch (asters[i].type) {
+        case 0: { //Helios
+          break;
+        }
+        case 1: { //Moon
+          break;
+        }
+        case 2: { //Planets
+          avPla[navPla] = i;
+          navPla++;
+          break;
+        }
+        case 3: { //Stars
+          if (asters[i].mag > M2) { // it is an M3 star
+            avM3[navM3] = i;
+            navM3++;
+            avM23[navM23] = i;
+            navM23++;
+            avM123[navM123] = i;
+            navM123++;
+          } else if (asters[i].mag > M1) { // it is an M2 star
+            avM2[navM2] = i;
+            navM2++;
+            avM12[navM12] = i;
+            navM12++;
+            avM23[navM23] = i;
+            navM23++;
+            avM123[navM123] = i;
+            navM123++;            
+          } else {  // it is an M1 star
+            avM1[navM1] = i;
+            navM1++;
+            avM12[navM12] = i;
+            navM12++;
+            avM123[navM123] = i;
+            navM123++;            
+          }
+          break;
+        }
+      }
+    }
+  }
+  iAster[2] = navM1; // temporary, for testing using the M1 set of visisble stars
+  Serial.print("navAll=");
+  Serial.print(navAll);
+  Serial.print("  navM123=");
+  Serial.print(navM123);
+  Serial.print("  navM1=");
+  Serial.println(navM1);
+  for (int i =0; i<navM1; i++) {
+    Serial.println(avM1[i]);
+  }
+}
+
+
+
+
+// calculate azi ele of star at position posLat posLon
+// poslat
+// posLon
+//..
+
+// day to J2000 
 uint32_t DtoJ2000(ts t) {
     uint16_t y;
     uint32_t tJ2000;
     int dayMonth[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
-    Serial.print("DtoJ200 input ");
-    Serial.print(t.year);
-    Serial.print(" ");
-    Serial.print(t.mon);
-    Serial.print(" ");
-    Serial.print(t.mday);
-    Serial.print(" ");
-    Serial.print(t.hour);
-    Serial.print(" ");
-    Serial.print(t.min);
-    Serial.print(" ");
-    Serial.print(t.sec);
-    Serial.print(" = ");
     y = t.year - 2000; // cause this is the first year < at 1970 where year % 400 = 0
     tJ2000 = y * 31536000 - 43200 + (dayMonth[t.mon-1] + t.mday + (y/4) - ((y%4==0)&&(t.mday<3) ? 1 : 0) ) * 86400 + t.hour * 3600 + t.min * 60 + t.sec;
-    Serial.println(tJ2000);
+//    Serial.println(tJ2000);
     if (tJ2000 < 0) {tJ2000 = 0;}
     return tJ2000;
 }
@@ -519,37 +701,6 @@ void setJ2000(uint32_t timestamp) {
   setT.mon = month;
   setT.year = year + 2000;
   DS3231_set(setT);
-  Serial.print(DtoJ2000(setT));
-/*    Serial.print(" ");
-    Serial.print(setT.year);
-    Serial.print(" ");
-    Serial.print(setT.mon);
-    Serial.print(" ");
-    Serial.print(setT.mday);
-    Serial.print(" ");
-    Serial.print(setT.hour);
-    Serial.print(" ");
-    Serial.print(setT.min);
-    Serial.print(" ");
-    Serial.print(setT.sec);
-    Serial.println(" ");
-    DS3231_get(&getT);
-    Serial.print("Get ");
-    Serial.print(DtoJ2000(getT));
-    Serial.print(" ");
-    Serial.print(getT.year);
-    Serial.print(" ");
-    Serial.print(getT.mon);
-    Serial.print(" ");
-    Serial.print(getT.mday);
-    Serial.print(" ");
-    Serial.print(getT.hour);
-    Serial.print(" ");
-    Serial.print(getT.min);
-    Serial.print(" ");
-    Serial.print(getT.sec);
-    Serial.println(" ");
-    Serial.println(" "); */
 }
 
 
@@ -571,44 +722,80 @@ void clockOverlay(OLEDDisplay *display, OLEDDisplayUiState* state) {
 void updateVariable (int varIndex, int dSign) {
 /*  
  *   variable - pointer to the variable to update
- *   unitFraction - fraction of integer used as unit of change e.g. 1=>units 10=>10ths of unit 60=>60th of units
- *   dVal - step of change in unitFractions 
- *   txtValues - list of possible text values as Strings
- *   txtValuesCount - length of list
+ *   dSign - sign of change
  */
-  ts upT;
-  if (varSelect[varIndex] == 7) {
-    uint32_t minV = timeNow[1];
-    uint32_t maxV = timeNow[2];
-    int32_t unitFraction = varMulti[varIndex] * dSign;
-    int32_t signedTime;
-    DS3231_get(&upT);
-    Serial.print("Update ");
-    Serial.print(upT.year);
-    Serial.print(" ");
-    Serial.print(upT.mon);
-    Serial.print(" ");
-    Serial.print(upT.mday);
-    Serial.print(" ");
-    Serial.print(upT.hour);
-    Serial.print(" ");
-    Serial.print(upT.min);
-    Serial.print(" ");
-    Serial.print(upT.sec);   
-    signedTime = DtoJ2000(upT);
-    Serial.print(" ");
-    Serial.print(signedTime);   
-    Serial.print("+");
-    Serial.print(unitFraction);   
-    signedTime +=  unitFraction;
-    Serial.print("=");
-    Serial.println(signedTime);   
-    if (signedTime > maxV) {signedTime = signedTime - maxV + minV;}
-    else if (signedTime < minV) {signedTime = signedTime + maxV - minV;}    
-    timeNow[0] = signedTime;
-    setJ2000 (signedTime);    
+  if (varSelect[varIndex] == 11) {
+    Serial.print("select=");
+    Serial.print(select);
+    Serial.print("  dSign=");
+    Serial.print(dSign);
+    switch (select) {
+      case 1: {
+        Serial.print("  yearOld=");
+        Serial.print(upT.year);
+        upT.year += dSign;
+        Serial.print("  yearNew=");
+        Serial.println(upT.year);
+        break;
+      }
+      case 2: {
+        Serial.print("  monOld=");
+        Serial.print(upT.mon);
+        upT.mon += dSign;
+        upT.mon = 1+(upT.mon-1) % 12;
+        Serial.print("  monNew=");
+        Serial.println(upT.mon);
+        break;
+      }
+      case 3: {
+        Serial.print("  dayOld=");
+        Serial.print(upT.mday);
+        int mod;
+        if (upT.mon == 4 || upT.mon == 6 || upT.mon == 9 || upT.mon == 11) { mod = 30; }
+        else if (upT.mon == 2) {
+          if (upT.year % 4 == 0) { mod = 29; }
+          else { mod = 28; }
+        } else { mod = 31; }
+        upT.mday += dSign;
+        upT.mday = 1+(upT.mday-1) % mod;
+        Serial.print("  dayNew=");
+        Serial.println(upT.mday);
+        break;
+      }
+      case 4: {
+        Serial.print("  hourOld=");
+        Serial.print(upT.hour);
+        upT.hour += dSign;
+        upT.hour = upT.hour % 24;
+        Serial.print("  hourNew=");
+        Serial.println(upT.hour);
+        break;
+      }
+      case 5: {
+        Serial.print("  minOld=");
+        Serial.print(upT.min);
+        upT.min += dSign;
+        upT.min = upT.min % 60;
+        Serial.print("  minNew=");
+        Serial.println(upT.min);
+        break;
+      }
+      case 6: {
+        Serial.print("  secOld=");
+        Serial.print(upT.sec);
+        upT.sec += dSign;
+        upT.sec = upT.sec % 60;
+        Serial.print("  secNew=");
+        Serial.println(upT.sec);
+        break;
+      }
+    }
+    DS3231_set(upT);
+    timeNow[0] = DtoJ2000(upT); // update current time in J2000
   } else {
     float* variable = mainVariables[varSelect[varIndex]];
+    Serial.print("variable ––– pre = ");
+    Serial.print(*variable);
     int varSign = (*variable>=0) ? 1 :-1;
     *variable *= varSign;
     float minV =  0;
@@ -620,8 +807,11 @@ void updateVariable (int varIndex, int dSign) {
       *variable += (1.0 / unitFraction);
       if (*variable > maxV) {*variable = *variable - maxV + minV;}
       else if (*variable < minV) {*variable = *variable + maxV - minV;}
+      else if (*variable == maxV && variable[3] == 1.0) {*variable = minV;}
     }
     *variable *= varSign;
+    Serial.print(" ––– post = ");
+    Serial.println(*variable);
   }
 }
 
@@ -653,10 +843,18 @@ void drawScrollBar (OLEDDisplay *display, int16_t sec, int16_t tot, boolean acti
   }
 }
 
-void drawData (OLEDDisplay *display, int16_t x, int16_t y, String title, String value) {
+void drawDataCol (OLEDDisplay *display, int16_t x, int16_t y, String title, String value) {
   display->setTextAlignment(TEXT_ALIGN_CENTER_BOTH);
   display->drawString(x, y-16, title);
   display->drawString(x, y, value);
+}
+
+void drawDataRow (OLEDDisplay *display, int16_t x, int16_t y, String title, String value, boolean alignRight) {
+  String out;
+  out = title + " " + value;
+  if (alignRight) display->setTextAlignment(TEXT_ALIGN_RIGHT);
+  else display->setTextAlignment(TEXT_ALIGN_LEFT);
+  display->drawString(x, y, out);
 }
 
 void drawButton (OLEDDisplay *display, int16_t x, int16_t y, unsigned char* symbolUp = space, unsigned char* symbolDown = space) {
@@ -679,19 +877,24 @@ void cancelButton (OLEDDisplay *display, int16_t x, int16_t y) {
 }
 
 void starfinderFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
+  int iavM1 = int(iAster[0]);
+
+  int eleDeg = int(asters[avM1[iavM1]].ele); // temp to test with M1
+  int eleMin = abs(int(60*(asters[avM1[iavM1]].ele-eleDeg)));
+  int aziDeg = int(asters[avM1[iavM1]].azi);                 
+  int aziMin = abs(int(60*(asters[avM1[iavM1]].azi-aziDeg)));
+  String sName = stars[asters[avM1[iavM1]].index].sName; // just because I know it is a star in this test with M1
   display->setFont(Dialog_plain_8);
   //mode
   display->setTextAlignment(TEXT_ALIGN_LEFT);
-  display->drawString(0 , 0, "Starfinder" );
+  display->drawString(0 , 0, "Starfinder M1" );
   // star
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
-  display->drawString(screenW , 0, "Betelgeuse" );
+  display->drawString(screenW , 0, sName );
   //azimuth measure
-  display->setTextAlignment(TEXT_ALIGN_LEFT);
-  display->drawString(0,screenH-8,"A 155º32'");
+  drawDataRow (display, 0,screenH-8,"E", String(eleDeg)+"º"+twoDigits(eleMin)+"'", false);
   //elevation measure
-  display->setTextAlignment(TEXT_ALIGN_RIGHT);
-  display->drawString(screenW,screenH-8,"E 65º23'");
+  drawDataRow (display, screenW,screenH-8,"A", String(aziDeg)+"º"+twoDigits(aziMin)+"'", true);
   //target
   display->drawCircle(centerX, centerY, 3);
   //star crosshatch
@@ -704,6 +907,10 @@ void starfinderFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x,
 }
 
 void takeSightFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
+  int aziDeg = int(asterAzi[0]);
+  int aziMin = abs(int(60*(asterAzi[0]-aziDeg)));
+  int eleDeg = int(asterEle[0]);
+  int eleMin = abs(int(60*(asterEle[0]-eleDeg)));
   display->setFont(Dialog_plain_8);
   //mode
   display->setTextAlignment(TEXT_ALIGN_LEFT);
@@ -712,14 +919,13 @@ void takeSightFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, 
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
   display->drawString(screenW , 0, "Betelgeuse" );
   //azimuth/elevation
-  display->fillCircle(centerX-4,screenH-3,2);
+  display->drawCircle(centerX-4,screenH-3,2);
   display->drawCircle(centerX+4,screenH-3,2);
+  display->fillCircle(centerX+4*(2*select-1),screenH-3,2);    
   //azimuth measure
-  display->setTextAlignment(TEXT_ALIGN_LEFT);
-  display->drawString(0,screenH-8,"A 155º32'");
+  drawDataRow (display, 0,screenH-8,"A", String(aziDeg)+"º"+twoDigits(aziMin)+"'", false);
   //elevation measure
-  display->setTextAlignment(TEXT_ALIGN_RIGHT);
-  display->drawString(screenW,screenH-8,"E 65º23'");
+  drawDataRow (display, screenW,screenH-8,"E", String(eleDeg)+"º"+twoDigits(eleMin)+"'", true);
   //horizon line
   display->drawLine(0, centerY, screenW,  centerY);
   //azimuth line
@@ -750,10 +956,6 @@ void positionFixFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x
 void eyeHeightSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
   unsigned char* iconUp = arrowUp;
   unsigned char* iconDown = arrowDown;
-  if (select == selectPerFrame[frame]-1) {
-    iconUp = checkY;
-    iconDown = checkX;
-  }
   drawScrollBar(display, 0, 5, (select==0));
   display->setFont(Dialog_plain_8);
   //mode
@@ -763,9 +965,7 @@ void eyeHeightSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t 
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
   display->drawString(screenW , 0, "Estimate" );
   //buttons
-  
-  drawData (display, 32, centerY, "Eye Height", String(mainVariables[0][0]));
-//  drawData (display, 64, centerY, "", "OK");
+  drawDataCol (display, 32, centerY, "Eye Height", String(mainVariables[4][0]));
   if (select!=0) {drawButton (display, 32+32*(select-1), centerY, iconUp, iconDown);}
 }
 
@@ -799,20 +999,16 @@ void horizonSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x,
 void latLonSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
   unsigned char* iconUp = arrowUp;
   unsigned char* iconDown = arrowDown;
-  float lat = mainVariables[3][0];
+  float lat = mainVariables[7][0];
   float ulat = (lat >= 0.0) ? lat: -lat;
   char NS = (lat >= 0.0) ? 'N': 'S';
-  float lon = mainVariables[4][0];
+  float lon = mainVariables[8][0];
   float ulon = (lon >= 0.0) ? lon: -lon;
   char EW = (lon >= 0.0) ? 'E': 'W';
   int latDeg = int(ulat);
   int latMin = int(60.0*(ulat-latDeg));
   int lonDeg = int(ulon);
   int lonMin = int(60.0*(ulon-lonDeg));
-  if (select == selectPerFrame[frame]-1) {
-    iconUp = checkY;
-    iconDown = checkX;
-  }
   drawScrollBar(display, 2, 5, (select==0));
   display->setFont(Dialog_plain_8);
   //mode
@@ -822,26 +1018,21 @@ void latLonSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, 
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
   display->drawString(screenW , 0, "Estimate" );
   //buttons
-  drawData (display, 16, centerY, "Lat.", String(latDeg)+"º");
-  drawData (display, 32, centerY, "", twoDigits(latMin)+"'");
-  drawData (display, 48, centerY, "", String(NS));
-  drawData (display, 64, centerY, "Lon.", String(lonDeg)+"º");
-  drawData (display, 80, centerY, "", twoDigits(lonMin)+"'");
-  drawData (display, 96, centerY, "", String(EW));
-//  drawData (display, 112, centerY, "", "OK");
+  drawDataCol (display, 16, centerY, "Lat.", String(latDeg)+"º");
+  drawDataCol (display, 32, centerY, "", twoDigits(latMin)+"'");
+  drawDataCol (display, 48, centerY, "", String(NS));
+  drawDataCol (display, 64, centerY, "Lon.", String(lonDeg)+"º");
+  drawDataCol (display, 80, centerY, "", twoDigits(lonMin)+"'");
+  drawDataCol (display, 96, centerY, "", String(EW));
   if (select!=0) {drawButton (display, 16+16*(select-1), centerY, iconUp, iconDown);}
 }
 
 void headingSpeedSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
   unsigned char* iconUp = arrowUp;
   unsigned char* iconDown = arrowDown;
-  int iHeading = int(mainVariables[5][0]);
-  int iSpeed =  int(mainVariables[6][0]);
-  int dSpeed = int(10*(mainVariables[6][0]-iSpeed));
-  if (select == selectPerFrame[frame]-1) {
-    iconUp = checkY;
-    iconDown = checkX;
-  }
+  int iHeading = int(mainVariables[9][0]);
+  int iSpeed =  int(mainVariables[10][0]);
+  int dSpeed = int(10*(mainVariables[10][0]-iSpeed));
   drawScrollBar(display, 3, 5, (select==0));
   display->setFont(Dialog_plain_8);
   //mode
@@ -851,9 +1042,9 @@ void headingSpeedSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
   display->drawString(screenW , 0, "Estimate" );
   //buttons
-  drawData (display, 32, centerY, "Heading", String(iHeading)+"º");
-  drawData (display, 80, centerY, "Speed (kn)", String(iSpeed)+"."+String(dSpeed));
-//  drawData (display, 96, centerY, "", "OK");
+  drawDataCol (display, 32, centerY, "Heading", String(iHeading)+"º");
+  drawDataCol (display, 80, centerY, "Speed (kn)", String(iSpeed)+"."+String(dSpeed));
+//  drawDataCol (display, 96, centerY, "", "OK");
   if (select!=0) {drawButton (display, 32+48*(select-1), centerY, iconUp, iconDown);}
 }
 
@@ -874,13 +1065,12 @@ void timeGMTSetFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x,
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
   display->drawString(screenW , 0, "OK resets sec." );
   //buttons
-  drawData (display, 16, centerY, "Y", String(twoDigits(t.year_s)));
-  drawData (display, 32, centerY, "M", String(twoDigits(t.mon)));
-  drawData (display, 48, centerY, "D", String(twoDigits(t.mday)));
-  drawData (display, 64, centerY, "h", String(twoDigits(t.hour)));
-  drawData (display, 80, centerY, "m", String(twoDigits(t.min)));
-  drawData (display, 96, centerY, "s", String(twoDigits(t.sec)));
-//  drawData (display, 112, centerY, "", "OK");
+  drawDataCol (display, 16, centerY, "Y", String(twoDigits(t.year_s)));
+  drawDataCol (display, 32, centerY, "M", String(twoDigits(t.mon)));
+  drawDataCol (display, 48, centerY, "D", String(twoDigits(t.mday)));
+  drawDataCol (display, 64, centerY, "h", String(twoDigits(t.hour)));
+  drawDataCol (display, 80, centerY, "m", String(twoDigits(t.min)));
+  drawDataCol (display, 96, centerY, "s", String(twoDigits(t.sec)));
   if (select!=0) {drawButton (display, 16+16*(select-1), centerY, iconUp, iconDown);}
 }
 
@@ -1072,6 +1262,10 @@ void setup() {
   unsigned long epoch = secsSinceStart - seventyYears * SECS_PER_HOUR;
   setTime(epoch);
 
+  DS3231_get(&upT);
+  timeNow[0] = DtoJ2000(upT); // update current time in J2000
+  timePre = timeNow[0];
+  astersNow();
 }
 
 
@@ -1084,6 +1278,12 @@ void loop() {
   int remainingTimeBudget = ui.update();
 
   if (remainingTimeBudget > 0) {
+    DS3231_get(&upT);
+    timeNow[0] = DtoJ2000(upT); // update current time in J2000
+    if (timeNow[0] != timePre) {
+//      astersNow();              // recalculate asters positions
+      timePre = timeNow[0];
+    }
     event = checkEvent();
     if (event!=0xFF) {
       button = (event >> 4);
@@ -1092,84 +1292,91 @@ void loop() {
       }
       act = action[(byte)mode][(byte)event>>4][((byte)event & 0x03)];
       call = act & 0x1F;
-      if (mode==M_SETUP) {
-        switch (call) {
-          case 0x01: { // CONFIRM short
-            select = (select+1) % selectInFrame;
-            varIndex = frameFirstIndex[setupFrame] + select; 
-            break;
+      Serial.println(call);
+      switch (call) {
+        case 0x01: { // CONFIRM short
+          select = (select+1) % selectInFrame;
+          varIndex = frameFirstIndex[frame] + select; 
+          Serial.print(" --- select = ");
+          Serial.print(select);
+          Serial.print(" –-- varIndex = ");
+          Serial.println(varIndex);
+          break;
+        }
+        case 0x02: { // UP short
+          if ((select == 0) && (mode==M_SETUP)) { //scoll to previous setupFrame
+            frame = iFirstSetupFrame + (setupFrames + frame - iFirstSetupFrame - 1) % setupFrames;
+            selectInFrame = selectPerFrame[frame];
+            ui.switchToFrame(frame);
+          } else { //set unit increase for select variable
+            dSign = 1;
+            updateVariable(varIndex, dSign);
+            dSign = 0; 
           }
-          case 0x02: { // UP short
-            if (select == 0) { //scoll to previous setupFrame
-              setupFrame = (setupFrames + setupFrame - 1) % setupFrames;
-              selectInFrame = selectPerFrame[setupFrame];
-              ui.switchToFrame(mode+setupFrame);
-            } else { //set unit increase for select variable
-              dSign = 1;
-              updateVariable(varIndex, dSign);
-              dSign = 0; 
-            }
-            break;
+          break;
+        }
+        case 0x03: { //UP long start
+          if ((select == 0) && (mode==M_SETUP)) { //scoll to previous setupFrame
+            frame = iFirstSetupFrame + (setupFrames + frame - iFirstSetupFrame - 1) % setupFrames;
+            selectInFrame = selectPerFrame[frame];
+            ui.switchToFrame(frame);
+          } else { //set unit increase for select variable
+            dSign = 1;
+            lastFastUpdate = millis();
           }
-          case 0x03: { //UP long start
-            if (select == 0) { //scoll to previous setupFrame
-              setupFrame = (setupFrames + setupFrame - 1) % setupFrames;
-              selectInFrame = selectPerFrame[setupFrame];
-              ui.switchToFrame(mode+setupFrame);
-            } else { //set unit increase for select variable
-              dSign = 1;
-              lastFastUpdate = millis();
-            }
-            break;
+          break;
+        }
+        case 0x04: { //UP long end
+          if ((select == 0) && (mode==M_SETUP)) { //do nothing
+          } else { //set unit increase for select variable
+            dSign = 0;
           }
-          case 0x04: { //UP long end
-            if (select == 0) { //do nothing
-            } else { //set unit increase for select variable
-              dSign = 0;
-            }
-            break;
+          break;
+        }
+        case 0x05: { // DOWN short
+          if ((select == 0) && (mode==M_SETUP)) { //scoll to next setupFrame
+            frame = iFirstSetupFrame + (frame - iFirstSetupFrame + 1) % setupFrames;
+            selectInFrame = selectPerFrame[frame];
+            ui.switchToFrame(frame);
+          } else { // set unit decrease for select variable
+            dSign = -1;
+            updateVariable(varIndex, dSign);
+            dSign = 0;
           }
-          case 0x05: { // DOWN short
-            if (select == 0) { //scoll to next setupFrame
-              setupFrame = (setupFrame + 1) % setupFrames;
-              selectInFrame = selectPerFrame[setupFrame];
-              ui.switchToFrame(mode+setupFrame);
-            } else { // set unit decrease for select variable
-              dSign = -1;
-              updateVariable(varIndex, dSign);
-              dSign = 0;
-            }
-            break;
+          break;
+        }
+        case 0x06: { //DOWN long start
+          if ((select == 0) && (mode==M_SETUP)) { //scoll to previous setupFrame
+            frame = iFirstSetupFrame + (frame - iFirstSetupFrame + 1) % setupFrames;
+            selectInFrame = selectPerFrame[frame];
+            ui.switchToFrame(frame);
+          } else { //set unit increase for select variable
+            dSign = -1;
+            lastFastUpdate = millis();
           }
-          case 0x06: { //DOWN long start
-            if (select == 0) { //scoll to previous setupFrame
-              setupFrame = (setupFrames + setupFrame - 1) % setupFrames;
-              selectInFrame = selectPerFrame[setupFrame];
-              ui.switchToFrame(mode+setupFrame);
-            } else { //set unit increase for select variable
-              dSign = -1;
-              lastFastUpdate = millis();
-            }
-            break;
+          break;
+        }
+        case 0x07: { //DOWN long end
+          if ((select == 0) && (mode==M_SETUP)) { //do nothing
+          } else { //set unit increase for select variable
+            dSign = 0;
           }
-          case 0x07: { //DOWN long end
-            if (select == 0) { //do nothing
-            } else { //set unit increase for select variable
-              dSign = 0;
-            }
-            break;
-          }
+          break;
+        }
+        case 0x08: { // select closest star to current azimuth reading
+          break;
         }
       }
-      // change mode after running functions
-      if ( (act>>5) != 0x7 ) {
+
+      // change mode after running functions (there was a reason for doing it after, but I don't recall why)
+      if ( (act>>5) != 0x7 ) {  // 0x7 is any Setup command
         mode = act>>5;
-        if (mode!=3) { ui.switchToFrame(mode); } 
-        else { 
-          ui.switchToFrame(mode+setupFrame);
-          selectInFrame = selectPerFrame[setupFrame];
-        }
-      }
+        frame = mode;
+        selectInFrame = selectPerFrame[frame];
+        ui.switchToFrame(mode); // should be able to switch between frames in setup
+        select = 0;
+        varIndex = frameFirstIndex[frame] + select; 
+      } 
     }
     // update variable
     //  if long pressed then change by unit every 100ms 
