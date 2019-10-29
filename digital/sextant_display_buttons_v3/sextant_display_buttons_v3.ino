@@ -29,6 +29,10 @@
 
 #include <TimeLib.h>
 
+#include "FS.h"
+#include "SD.h"
+#include "SPI.h"
+
 #include "Fonts.h"
 
 #include <Wire.h>  // Only needed for Arduino 1.6.5 and earlier
@@ -41,6 +45,9 @@
 
 // Include custom images
 #include "images.h"
+
+#include "MPU9250.h"
+MPU9250 mpu; //note, I2C address 0x68 conflicts with DS3231, so ADO set = 2 to have address 0x69
 
 // Initialize the OLED display using Wire library
 #define SDA_PIN GPIO_NUM_21
@@ -67,9 +74,9 @@ OLEDDisplayUi ui ( &display );
 #define BUTT_JOINT   0x03 // 11
 
 // buttons ports
-#define BUTT_GPIO_CONFIRM GPIO_NUM_5 
-#define BUTT_GPIO_DOWN    GPIO_NUM_19  
-#define BUTT_GPIO_UP      GPIO_NUM_18  
+#define BUTT_GPIO_CONFIRM GPIO_NUM_13 // was 5 
+#define BUTT_GPIO_DOWN    GPIO_NUM_14 // was 19  
+#define BUTT_GPIO_UP      GPIO_NUM_12 // was 18  
 
 // buttons status
 #define ST_RELEASED   0x00 // 00
@@ -94,6 +101,10 @@ OLEDDisplayUi ui ( &display );
 #define ACT_SHORT       0x00 // 00
 #define ACT_START_LONG  0x01 // 01
 #define ACT_END_LONG    0x02 // 10
+
+#define SCREEN_H_ANGLE    20.0 // total vertical angle covered by display -> to be measured after building th einstrument
+
+boolean recording = false; //if true, record on SD card the raw magnetometer readings
 
 typedef void (*actionFunction)();
 actionFunction* actionFunctions;
@@ -145,6 +156,15 @@ float posLon[] = {-0.224904,-180,180,1};     //
 float heading[] = {32.0,0,360,1};         //
 float speedKn[] = {4.0,0,20,0};         //
 uint32_t timeNow[] = {631152000,0,2147483647,0};            //time now, seconds from J2000 , max size in uint32, approx to 2068
+float elevation = 0.0; //pitch
+float tilt = 0.0; //roll
+float bearing = 0.0; //yaw
+// running average of instrument position
+float eleAvg [10] = {0,0,0,0,0,0,0,0,0,0};
+float tiltAvg[10] = {0,0,0,0,0,0,0,0,0,0};
+float bearAvg[10] = {0,0,0,0,0,0,0,0,0,0};
+int samples = 1; // can be set from 1 to 10 samples
+int sample = 0; // current sample
 
 // stars data (fixed, could stay in EEPROM)
 struct star {
@@ -915,6 +935,9 @@ void takeSightFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, 
   //mode
   display->setTextAlignment(TEXT_ALIGN_LEFT);
   display->drawString(0 , 0, "Take Sight" );
+  //mode
+  display->setTextAlignment(TEXT_ALIGN_CENTER);
+  display->drawString(screenW/2 , 0, String(bearing) );
   // star
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
   display->drawString(screenW , 0, "Betelgeuse" );
@@ -927,8 +950,11 @@ void takeSightFrame(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, 
   //elevation measure
   drawDataRow (display, screenW,screenH-8,"E", String(eleDeg)+"º"+twoDigits(eleMin)+"'", true);
   //horizon line
-  display->drawLine(0, centerY, screenW,  centerY);
+  float tiltdY = tan ( tilt * DEG_TO_RAD ) * screenW / 2;
+  float eledY = tan ( elevation * DEG_TO_RAD ) / tan ( SCREEN_H_ANGLE / 2 * DEG_TO_RAD ) * screenH / 2;
+  display->drawLine(0, centerY - tiltdY + eledY, screenW,  centerY + tiltdY + eledY);
   //azimuth line
+  
   display->drawLine(centerX,centerY-5,centerX,centerY+5);
 }
 
@@ -1195,10 +1221,101 @@ int frameCount = 8;
 OverlayCallback overlays[] = { clockOverlay };
 int overlaysCount = 1;
 
+void writeFile(fs::FS &fs, const char * path, const char * message){
+
+    File file = fs.open(path, FILE_WRITE);
+    if(!file){
+        Serial.println("Failed to open file for writing");
+        return;
+    }
+    if(!file.print(message)){
+        Serial.println("Write failed");
+    }
+    file.close();
+}
+
+void appendFile(fs::FS &fs, const char * path, const char * message){
+
+    File file = fs.open(path, FILE_APPEND);
+    if(!file){
+        Serial.println("Failed to open file for appending");
+        return;
+    }
+    if(!file.print(message)){
+        Serial.println("Append failed");
+    }
+    file.close();
+}
+
+
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println();
   Wire.begin(); //start i2c (required for connection)
+  delay(2000);
+
+  if(!SD.begin()){
+      Serial.println("Card Mount Failed");
+  } else {
+    uint8_t cardType = SD.cardType();
+    if(cardType == CARD_NONE){
+      Serial.println("No SD card attached");
+    } else {
+      writeFile(SD, "/MagCal.csv", "X, Y, Z\n");
+      Serial.print("SD Card Type: ");
+      if(cardType == CARD_MMC){
+          Serial.println("MMC");
+      } else if(cardType == CARD_SD){
+          Serial.println("SDSC");
+      } else if(cardType == CARD_SDHC){
+          Serial.println("SDHC");
+      } else {
+          Serial.println("UNKNOWN");
+      }
+    }
+  }
+  
+
+  byte error, address;
+  int nDevices;
+ 
+  Serial.println("I2C Scanning...");
+ 
+  nDevices = 0;
+  for(address = 1; address < 127; address++ )
+  {
+    // The i2c_scanner uses the return value of
+    // the Write.endTransmisstion to see if
+    // a device did acknowledge to the address.
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+ 
+    if (error == 0)
+    {
+      Serial.print("I2C device found at address 0x");
+      if (address<16)
+        Serial.print("0");
+      Serial.print(address,HEX);
+      Serial.println("  !");
+ 
+      nDevices++;
+    }
+    else if (error==4)
+    {
+      Serial.print("Unknown error at address 0x");
+      if (address<16)
+        Serial.print("0");
+      Serial.println(address,HEX);
+    }    
+  }
+  if (nDevices == 0)
+    Serial.println("No I2C devices found\n");
+  else
+    Serial.println("done I2C scan\n");
+ 
+  delay(2000); 
+
+  
   DS3231_init(DS3231_INTCN); //register the ds3231 (DS3231_INTCN is the default address of ds3231, this is set by macro for no performance loss)
   // Make input & enable pull-up resistors on switch pins
   for (byte i=0; i< NUMBUTTONS-1; i++) {
@@ -1206,6 +1323,23 @@ void setup() {
     pinMode(buttons[i], INPUT_PULLUP);
   }
   pinMode(BUZZPIN, OUTPUT); // Set buzzer - pin 9 as an output
+
+    mpu.setup();
+    mpu.calibrateAccelGyro();
+    mpu.setMagBias (0, -185.6135 * 10. * 4912. / 32760.0 * mpu.getMagCal(0));
+    mpu.setMagBias (1, 503.428 * 10. * 4912. / 32760.0 * mpu.getMagCal(1));
+    mpu.setMagBias (2, -1301.1 * 10. * 4912. / 32760.0 * mpu.getMagCal(2));    //    
+    mpu.setMagScale (0, 1.270838049);
+    mpu.setMagScale (1, 1.199639349); // 
+    mpu.setMagScale (2, 0.7248825585); // 
+//    mpu.calibrateMag();
+    Serial.print(mpu.getMagBias(0));
+    Serial.print(", ");Serial.print(mpu.getMagBias(1));
+    Serial.print(", ");Serial.print(mpu.getMagBias(2));
+    Serial.print(", ");Serial.print(mpu.getMagScale(0));
+    Serial.print(", ");Serial.print(mpu.getMagScale(1));
+    Serial.print(", ");Serial.println(mpu.getMagScale(2));
+
 
 	// The ESP is capable of rendering 60fps in 80Mhz mode
 	// but that won't give you much time for anything else
@@ -1270,12 +1404,42 @@ void setup() {
 
 
 void loop() {
+  char result[10]; // Buffer big enough for large numbers
   byte event;
   byte button;
   byte act;
   int freq = BUZZHIGH;
-
+  static uint32_t prev_ms = millis();
   int remainingTimeBudget = ui.update();
+
+// update instrument elevation pitch and roll
+  if ((millis() - prev_ms) > 100) {
+    mpu.update();
+
+    if (recording) {
+      dtostrf(mpu.getMag(0), 6, 3, result); // Leave room for large numbers!
+      appendFile(SD, "/MagCal.csv", result);
+      appendFile(SD, "/MagCal.csv", ", ");
+      dtostrf(mpu.getMag(1), 6, 3, result); // Leave room for large numbers!
+      appendFile(SD, "/MagCal.csv", result);
+      appendFile(SD, "/MagCal.csv", ", ");
+      dtostrf(mpu.getMag(2), 6, 3, result); // Leave room for large numbers!
+      appendFile(SD, "/MagCal.csv", result);
+      appendFile(SD, "/MagCal.csv", "\n");
+      Serial.print(mpu.getMag(0));
+      Serial.print(", "); Serial.print(mpu.getMag(1));
+      Serial.print(", "); Serial.println(mpu.getMag(2));
+    }
+    elevation = mpu.getPitch();
+    tilt = mpu.getRoll();
+    bearing = mpu.getYaw();
+    
+    Serial.print(mpu.getGyro(0));
+    Serial.print(", "); Serial.print(mpu.getGyro(1));
+    Serial.print(", "); Serial.println(mpu.getGyro(2));
+    
+    prev_ms = millis();
+  }
 
   if (remainingTimeBudget > 0) {
     DS3231_get(&upT);
